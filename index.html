@@ -437,7 +437,7 @@ function hipSlopes(W, L, wallH, ridgeRise, over) {
       uHalfAt: (vv) => { const t = (vv + vLen / 2) / vLen; return (uLen - (uLen - uRidge) * t) / 2; },
     });
   }
-  return { slopes: res, walls: [[0, 0, W, L, wallH]] };
+  return { slopes: res, walls: [[0, 0, W, L, wallH]], apex: { x: 0, y: ridgeH } };
 }
 // Mái bằng: bản nóc phẳng, 1 mặt đặt pin
 function flatSlopes(W, L, wallH) {
@@ -583,6 +583,7 @@ function wingGable(fp) {
 }
 
 let slabMesh = null;
+let houseApex = null; // đỉnh/mặt mái cao nhất {x, y} để vẽ đường ghi chiều cao
 let ridgeHandle = null; // thanh xanh kéo-thả để chỉnh đỉnh/dải bằng trên mô hình
 // Tấm bịt tam giác ở 2 đầu mái (hông nhà)
 function triCap(p1, p2, apex) {
@@ -608,6 +609,7 @@ function buildHouse() {
   // xoá nội dung cũ
   houseGroup.clear();
   slabMesh = null;
+  houseApex = null;
   slopes = [];
   const W = state.houseW, L = state.houseL;
 
@@ -648,6 +650,8 @@ function buildHouse() {
   for (const ex of parts.extras || []) houseGroup.add(ex);
   if (parts.slab) slabMesh = parts.slopes[0].mesh;
   slopes = parts.slopes;
+  houseApex = parts.handle ? { x: parts.handle.x, y: parts.handle.y }
+    : parts.apex ?? (parts.slab ? { x: 0, y: parts.slopes[0].origin.y } : null);
   // thanh xanh kéo-thả chỉnh đỉnh / dải bằng
   if (parts.handle) {
     const h = parts.handle;
@@ -716,6 +720,30 @@ function buildDimLines() {
     new THREE.Vector3(0, 0, 1), 0x1473e6, `Rộng ${W} m`));
   houseGroup.add(dimLine(new THREE.Vector3(xr, 0.05, -L / 2), new THREE.Vector3(xr, 0.05, L / 2),
     new THREE.Vector3(1, 0, 0), 0xe5484d, `Dài ${L} m`));
+  // kích thước từng mái: cạnh mái (xanh lá) + chiều dài dốc (cam), vẽ nổi trên mặt mái
+  for (const s of slopes) {
+    const lift = s.n.clone().multiplyScalar(0.06);
+    const iv = Math.min(0.35, s.vLen * 0.12), iu = Math.min(0.3, s.uLen * 0.08);
+    const flat = s.n.y > 0.99; // mái bằng / dải bằng giữa: ghi gộp 1 đường
+    const pAt = (uu, vv) => s.origin.clone().addScaledVector(s.u, uu).addScaledVector(s.v, vv).add(lift);
+    houseGroup.add(dimLine(pAt(-s.uLen / 2 + iu, -s.vLen / 2 + iv), pAt(s.uLen / 2 - iu, -s.vLen / 2 + iv),
+      s.v, 0x2f9e44,
+      flat ? `${s.label} ${s.uLen.toFixed(1)} × ${s.vLen.toFixed(1)} m` : `${s.label} ${s.uLen.toFixed(1)} m`));
+    if (!flat) {
+      // chiều dài dốc: bám cạnh biên, uHalfAt giúp bám theo cạnh mái chéo (mái Nhật)
+      houseGroup.add(dimLine(pAt(s.uHalfAt(-s.vLen / 2) - iu, -s.vLen / 2 + iv),
+        pAt(s.uHalfAt(s.vLen / 2) - iu, s.vLen / 2 - iv),
+        s.u.clone().negate(), 0xe8590c, `Dốc ${s.vLen.toFixed(1)} m`));
+    }
+  }
+  // chiều cao đỉnh / mặt mái (xanh cổ vịt), đặt trước mép nhà
+  if (houseApex) {
+    const flatTop = state.roofType === "bang";
+    houseGroup.add(dimLine(new THREE.Vector3(houseApex.x, 0.05, zf + 0.2),
+      new THREE.Vector3(houseApex.x, houseApex.y, zf + 0.2),
+      new THREE.Vector3(0, 0, 1), 0x0c8599,
+      `${flatTop ? "Cao" : "Đỉnh"} ${houseApex.y.toFixed(1)} m`));
+  }
 }
 
 /* ============================== Chuỗi pin ============================== */
