@@ -685,32 +685,41 @@ function buildHouse() {
 }
 
 /* ============================== Đường ghi kích thước ============================== */
-function textSprite(text, color) {
+function textSprite(text, color, opt = {}) {
+  const lines = Array.isArray(text) ? text : [text];
   const c = document.createElement("canvas");
   const g = c.getContext("2d");
-  const font = "600 64px system-ui, sans-serif";
+  const font = "600 46px system-ui, sans-serif";
   g.font = font;
-  c.width = Math.ceil(g.measureText(text).width) + 48; c.height = 112;
+  const lh = 54;
+  const wMax = Math.max(...lines.map(t => g.measureText(t).width));
+  c.width = Math.ceil(wMax) + 28; c.height = lines.length * lh + 20;
   g.font = font;
-  g.fillStyle = color;
   g.textAlign = "center"; g.textBaseline = "middle";
-  g.fillText(text, c.width / 2, c.height / 2);
-  const t = new THREE.CanvasTexture(c);
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false }));
-  sp.scale.set(c.width / 150, c.height / 150, 1);
+  // viền trắng mảnh để chữ đọc được trên mọi nền
+  g.strokeStyle = "rgba(255,255,255,0.9)"; g.lineWidth = 8; g.lineJoin = "round";
+  lines.forEach((t, i) => g.strokeText(t, c.width / 2, 10 + lh * (i + 0.5)));
+  g.fillStyle = color;
+  lines.forEach((t, i) => g.fillText(t, c.width / 2, 10 + lh * (i + 0.5)));
+  const t2 = new THREE.CanvasTexture(c);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t2, transparent: true, depthWrite: false, depthTest: opt.overlay ? false : true }));
+  sp.scale.set(c.width / 200, c.height / 200, 1);
+  if (opt.overlay) sp.renderOrder = 999;
   return sp;
 }
-function dimLine(p1, p2, tickDir, color, label) {
+function dimLine(p1, p2, tickDir, color, label, opt = {}) {
   const grp = new THREE.Group();
   const mat = new THREE.LineBasicMaterial({ color });
   grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([p1, p2]), mat));
   for (const p of [p1, p2]) {
     grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-      [p.clone().addScaledVector(tickDir, -0.25), p.clone().addScaledVector(tickDir, 0.25)]), mat));
+      [p.clone().addScaledVector(tickDir, -0.18), p.clone().addScaledVector(tickDir, 0.18)]), mat));
   }
-  const sp = textSprite(label, "#" + color.toString(16).padStart(6, "0"));
-  sp.position.copy(p1).add(p2).multiplyScalar(0.5).add(new THREE.Vector3(0, 0.55, 0));
-  grp.add(sp);
+  if (label) {
+    const sp = textSprite(label, "#" + color.toString(16).padStart(6, "0"));
+    sp.position.copy(p1).add(p2).multiplyScalar(0.5).add(opt.labelOffset ?? new THREE.Vector3(0, 0.35, 0));
+    grp.add(sp);
+  }
   return grp;
 }
 function buildDimLines() {
@@ -720,29 +729,31 @@ function buildDimLines() {
     new THREE.Vector3(0, 0, 1), 0x1473e6, `Rộng ${W} m`));
   houseGroup.add(dimLine(new THREE.Vector3(xr, 0.05, -L / 2), new THREE.Vector3(xr, 0.05, L / 2),
     new THREE.Vector3(1, 0, 0), 0xe5484d, `Dài ${L} m`));
-  // kích thước từng mái: cạnh mái (xanh lá) + chiều dài dốc (cam), vẽ nổi trên mặt mái
+  // kích thước từng mái: nét mảnh ngoài rìa mái (không đè pin), nhãn gộp giữa mái luôn hiện trên cùng
   for (const s of slopes) {
-    const lift = s.n.clone().multiplyScalar(0.06);
-    const iv = Math.min(0.35, s.vLen * 0.12), iu = Math.min(0.3, s.uLen * 0.08);
-    const flat = s.n.y > 0.99; // mái bằng / dải bằng giữa: ghi gộp 1 đường
-    const pAt = (uu, vv) => s.origin.clone().addScaledVector(s.u, uu).addScaledVector(s.v, vv).add(lift);
-    houseGroup.add(dimLine(pAt(-s.uLen / 2 + iu, -s.vLen / 2 + iv), pAt(s.uLen / 2 - iu, -s.vLen / 2 + iv),
-      s.v, 0x2f9e44,
-      flat ? `${s.label} ${s.uLen.toFixed(1)} × ${s.vLen.toFixed(1)} m` : `${s.label} ${s.uLen.toFixed(1)} m`));
+    const flat = s.n.y > 0.99; // mái bằng / dải bằng giữa
+    // cạnh mái: lơi 0.25 ra ngoài mép mái
+    const eOff = s.v.clone().multiplyScalar(-(s.vLen / 2 + 0.25));
+    houseGroup.add(dimLine(s.origin.clone().add(eOff).addScaledVector(s.u, -s.uLen / 2),
+      s.origin.clone().add(eOff).addScaledVector(s.u, s.uLen / 2), s.v, 0x2f9e44));
     if (!flat) {
-      // chiều dài dốc: bám cạnh biên, uHalfAt giúp bám theo cạnh mái chéo (mái Nhật)
-      houseGroup.add(dimLine(pAt(s.uHalfAt(-s.vLen / 2) - iu, -s.vLen / 2 + iv),
-        pAt(s.uHalfAt(s.vLen / 2) - iu, s.vLen / 2 - iv),
-        s.u.clone().negate(), 0xe8590c, `Dốc ${s.vLen.toFixed(1)} m`));
+      // chiều dài dốc: 0.25 ngoài cạnh biên, uHalfAt giúp bám cạnh mái chéo (mái Nhật)
+      const pAt = (vv) => s.origin.clone()
+        .addScaledVector(s.u, s.uHalfAt(vv) + 0.25)
+        .addScaledVector(s.v, vv);
+      houseGroup.add(dimLine(pAt(-s.vLen / 2), pAt(s.vLen / 2), s.u.clone().negate(), 0xe8590c));
     }
+    const sp = textSprite([s.label, `${s.uLen.toFixed(1)} × ${s.vLen.toFixed(1)} m`], "#1b2733", { overlay: true });
+    sp.position.copy(s.origin).addScaledVector(s.n, 0.12);
+    houseGroup.add(sp);
   }
-  // chiều cao đỉnh / mặt mái (xanh cổ vịt), đặt trước mép nhà
+  // cao đỉnh: đường đứng ở góc trước nhà
   if (houseApex) {
-    const flatTop = state.roofType === "bang";
-    houseGroup.add(dimLine(new THREE.Vector3(houseApex.x, 0.05, zf + 0.2),
-      new THREE.Vector3(houseApex.x, houseApex.y, zf + 0.2),
+    houseGroup.add(dimLine(new THREE.Vector3(W / 2 + 0.9, 0.05, L / 2 + 0.9),
+      new THREE.Vector3(W / 2 + 0.9, houseApex.y, L / 2 + 0.9),
       new THREE.Vector3(0, 0, 1), 0x0c8599,
-      `${flatTop ? "Cao" : "Đỉnh"} ${houseApex.y.toFixed(1)} m`));
+      `${state.roofType === "bang" ? "Cao" : "Đỉnh"} ${houseApex.y.toFixed(1)} m`,
+      { labelOffset: new THREE.Vector3(1.1, 0, 0) }));
   }
 }
 
