@@ -107,6 +107,10 @@
           <label style="display:block;font-size:12px;font-weight:600;color:#36424e;margin-bottom:2px">Góc nghiêng mái: <b id="roofAngleVal" style="color:#1473e6">26°</b></label>
           <input type="range" id="roofAngleRange" min="10" max="45" step="1" value="26" aria-label="Góc nghiêng mái" />
         </div>
+        <div id="ridgePctField" style="display:none;margin-bottom:10px">
+          <label style="display:block;font-size:12px;font-weight:600;color:#36424e;margin-bottom:2px">Tỷ lệ hai mái (trái : phải): <b id="ridgePctVal" style="color:#1473e6">50 : 50</b></label>
+          <input type="range" id="ridgePctRange" min="20" max="80" step="5" value="50" aria-label="Tỷ lệ hai mái" />
+        </div>
         <div id="midFlatField" style="display:none;margin-bottom:10px">
           <label style="display:block;font-size:12px;font-weight:600;color:#36424e;margin-bottom:2px">Bề rộng mái bằng giữa: <b id="midFlatVal" style="color:#1473e6">40%</b></label>
           <input type="range" id="midFlatRange" min="10" max="70" step="5" value="40" aria-label="Bề rộng mái bằng giữa" />
@@ -214,7 +218,7 @@ const ROOF_TYPES = [
 const DEFAULTS = {
   roofType: "ton", houseW: 9, houseL: 11, mount: "apmai",
   panelLmm: 2278, panelWmm: 1133, newCount: 9, slopeKey: null, houseAngle: 0,
-  roofAngle: 26, midFlatPct: 40, wallH: 3.0,
+  roofAngle: 26, midFlatPct: 40, wallH: 3.0, ridgePct: 50,
 };
 const state = {
   ...DEFAULTS,
@@ -346,31 +350,37 @@ function quadGeometry(corners) {
   return geo;
 }
 // Mái 2 dốc: đỉnh chạy theo trục Z, dốc trái (-X) và phải (+X); ridgeRise = độ cao đỉnh trên mặt tường
-function gableSlopes(W, L, wallH, ridgeRise, over) {
-  const k = ridgeRise / (W / 2);
+// ridgePct = % bề rộng nhà của mái trái (50 = đỉnh giữa, lệch thì 1 mái ngắn 1 mái dài)
+function gableSlopes(W, L, wallH, ridgeRise, over, ridgePct) {
+  const p = Math.min(90, Math.max(10, ridgePct ?? 50));
+  const Wl = W * p / 100, Wr = W - Wl;
+  const xr = -W / 2 + Wl;
   const ridgeH = wallH + ridgeRise;
-  const yEave = wallH - over * k;
   const z0 = -L / 2 - over, z1 = L / 2 + over;
   const uLen = z1 - z0;
-  const run = W / 2 + over, rise = ridgeH - yEave;
-  const vLen = Math.hypot(run, rise);
-  const res = [];
+  const res = { slopes: [], walls: [[0, 0, W, L, wallH]] };
   for (const side of [-1, 1]) {
-    const ridgeA = [0, ridgeH, z0], ridgeB = [0, ridgeH, z1];
-    const eaveB = [side * run, yEave, z1], eaveA = [side * run, yEave, z0];
-    const mesh = new THREE.Mesh(quadGeometry([ridgeA, ridgeB, eaveB, eaveA]), roofMat(state.roofType, uLen, vLen));
+    const runW = side < 0 ? Wl : Wr;
+    const run = runW + over;
+    const yEave = wallH - over * (ridgeRise / runW);
+    const rise = ridgeH - yEave;
+    const vLen = Math.hypot(run, rise);
+    const topX = xr, eaveX = side < 0 ? -W / 2 - over : W / 2 + over;
+    const rA = [topX, ridgeH, z0], rB = [topX, ridgeH, z1];
+    const eB = [eaveX, yEave, z1], eA = [eaveX, yEave, z0];
+    const mesh = new THREE.Mesh(quadGeometry([rA, rB, eB, eA]), roofMat(state.roofType, uLen, vLen));
     mesh.castShadow = mesh.receiveShadow = true;
-    const origin = new THREE.Vector3(side * run / 2, (ridgeH + yEave) / 2, 0);
-    const u = new THREE.Vector3(0, 0, 1);
-    const v = new THREE.Vector3(-side * run / vLen, rise / vLen, 0);
-    const n = new THREE.Vector3(side * rise / vLen, run / vLen, 0);
-    res.push({
+    res.slopes.push({
       key: side > 0 ? "phai" : "trai", label: side > 0 ? "Mái phải" : "Mái trái",
-      origin, u, v, n, uLen, vLen, mesh,
+      origin: new THREE.Vector3((topX + eaveX) / 2, (ridgeH + yEave) / 2, 0),
+      u: new THREE.Vector3(0, 0, 1),
+      v: new THREE.Vector3(-side * run / vLen, rise / vLen, 0),
+      n: new THREE.Vector3(side * rise / vLen, run / vLen, 0),
+      uLen, vLen, mesh,
       uHalfAt: () => uLen / 2,
     });
   }
-  return { slopes: res, walls: [[0, 0, W, L, wallH]] };
+  return res;
 }
 // Mái Nhật (hip): 2 dốc hình thang + 2 hình tam giác
 function hipSlopes(W, L, wallH, ridgeRise, over) {
@@ -547,9 +557,10 @@ function triCap(p1, p2, apex) {
 }
 function addGableCaps(parent, fp) {
   const w2 = fp.w / 2 - 0.02, l2 = fp.l / 2, h = fp.wallH, r = fp.wallH + fp.ridgeH - 0.02;
+  const dx = fp.dx || 0;
   if (fp.axis !== "x") {
-    parent.add(triCap([fp.cx - w2, h, fp.cz - l2], [fp.cx + w2, h, fp.cz - l2], [fp.cx, r, fp.cz - l2]));
-    parent.add(triCap([fp.cx - w2, h, fp.cz + l2], [fp.cx + w2, h, fp.cz + l2], [fp.cx, r, fp.cz + l2]));
+    parent.add(triCap([fp.cx - w2, h, fp.cz - l2], [fp.cx + w2, h, fp.cz - l2], [fp.cx + dx, r, fp.cz - l2]));
+    parent.add(triCap([fp.cx - w2, h, fp.cz + l2], [fp.cx + w2, h, fp.cz + l2], [fp.cx + dx, r, fp.cz + l2]));
   } else {
     parent.add(triCap([fp.cx - l2, h, fp.cz - w2], [fp.cx - l2, h, fp.cz + w2], [fp.cx - l2, r, fp.cz]));
     parent.add(triCap([fp.cx + l2, h, fp.cz - w2], [fp.cx + l2, h, fp.cz + w2], [fp.cx + l2, r, fp.cz]));
@@ -565,7 +576,7 @@ function buildHouse() {
   const tanA = Math.tan(THREE.MathUtils.degToRad(state.roofAngle));
   let parts;
   if (state.roofType === "ton" || state.roofType === "ngoi") {
-    parts = gableSlopes(W, L, state.wallH, tanA * (W / 2), 0.4);
+    parts = gableSlopes(W, L, state.wallH, tanA * (W / 2), 0.4, state.ridgePct);
   } else if (state.roofType === "nhat") {
     parts = hipSlopes(W, L, state.wallH, tanA * (W / 2), 0.4);
   } else if (state.roofType === "bang") {
@@ -590,7 +601,7 @@ function buildHouse() {
   }
   // bịt hông nhà cho các loại mái 2 dốc
   if (state.roofType === "ton" || state.roofType === "ngoi") {
-    addGableCaps(houseGroup, { cx: 0, cz: 0, w: W, l: L, wallH: state.wallH, ridgeH: tanA * (W / 2), axis: "z" });
+    addGableCaps(houseGroup, { cx: 0, cz: 0, w: W, l: L, wallH: state.wallH, ridgeH: tanA * (W / 2), axis: "z", dx: W * (state.ridgePct / 100 - 0.5) });
   } else if (state.roofType === "l" || state.roofType === "l_nguoc" || state.roofType === "t") {
     for (const fp of wingFootprints()) addGableCaps(houseGroup, fp);
   }
@@ -922,6 +933,7 @@ renderRoofOptions();
 // tùy chỉnh mái
 function updateCustomFields() {
   $("midFlatField").style.display = state.roofType === "hai_doc_bang" ? "" : "none";
+  $("ridgePctField").style.display = (state.roofType === "ton" || state.roofType === "ngoi") ? "" : "none";
   $("roofAngleField").style.display = state.roofType === "bang" ? "none" : "";
 }
 $("roofAngleRange").addEventListener("input", () => {
@@ -932,6 +944,11 @@ $("roofAngleRange").addEventListener("input", () => {
 $("midFlatRange").addEventListener("input", () => {
   state.midFlatPct = parseInt($("midFlatRange").value, 10);
   $("midFlatVal").textContent = state.midFlatPct + "%";
+  buildHouse(); refreshAll();
+});
+$("ridgePctRange").addEventListener("input", () => {
+  state.ridgePct = parseInt($("ridgePctRange").value, 10);
+  $("ridgePctVal").textContent = state.ridgePct + " : " + (100 - state.ridgePct);
   buildHouse(); refreshAll();
 });
 $("wallHRange").addEventListener("input", () => {
@@ -1028,6 +1045,7 @@ $("resetBtn").onclick = () => {
   $("angleRange").value = 0; $("angleVal").textContent = "0°";
   $("roofAngleRange").value = 26; $("roofAngleVal").textContent = "26°";
   $("midFlatRange").value = 40; $("midFlatVal").textContent = "40%";
+  $("ridgePctRange").value = 50; $("ridgePctVal").textContent = "50 : 50";
   $("wallHRange").value = 3; $("wallHVal").textContent = "3.0 m";
   houseGroup.rotation.y = 0;
   document.querySelectorAll("#mountOptions .opt").forEach(x =>
