@@ -205,9 +205,6 @@ const ROOF_TYPES = [
   { v: "nhat",    label: "Mái Nhật" },
   { v: "bang",    label: "Mái bằng" },
   { v: "hai_doc_bang", label: "Mái 2 dốc + bằng" },
-  { v: "l",       label: "Mái chữ L" },
-  { v: "l_nguoc", label: "Mái chữ L ngược" },
-  { v: "t",       label: "Mái chữ T" },
 ];
 const DEFAULTS = {
   roofType: "ton", houseW: 9, houseL: 11, mount: "apmai",
@@ -285,13 +282,13 @@ function makeTex(draw, rx, ry) {
   t.repeat.set(rx, ry);
   return t;
 }
-// Mái tôn: gợn sóng dọc
+// Mái tôn: gợn sóng dọc, màu xanh lá
 function tonTex(rx, ry) {
   return makeTex(g => {
-    g.fillStyle = "#ccd3d9"; g.fillRect(0, 0, 128, 128);
+    g.fillStyle = "#3e8e49"; g.fillRect(0, 0, 128, 128);
     for (let x = 0; x < 128; x += 16) {
-      g.fillStyle = "#e8edf1"; g.fillRect(x, 0, 6, 128);
-      g.fillStyle = "#aab3bc"; g.fillRect(x + 6, 0, 3, 128);
+      g.fillStyle = "#5cae67"; g.fillRect(x, 0, 6, 128);
+      g.fillStyle = "#2d6d37"; g.fillRect(x + 6, 0, 3, 128);
     }
   }, rx, ry);
 }
@@ -375,6 +372,14 @@ function quadGeometry(corners) {
   geo.computeVertexNormals();
   return geo;
 }
+// Tam giác có UV (p1,p2 đáy; p3 đỉnh) — dùng bịt đầu hông mái có texture
+function triGeometry(p1, p2, p3) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute([...p1, ...p2, ...p3], 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0.5, 1], 2));
+  geo.computeVertexNormals();
+  return geo;
+}
 // Mái 2 dốc: đỉnh chạy theo trục Z, dốc trái (-X) và phải (+X); ridgeRise = độ cao đỉnh trên mặt tường
 // ridgePct = % bề rộng nhà của mái trái (50 = đỉnh giữa, lệch thì 1 mái ngắn 1 mái dài)
 function gableSlopes(W, L, wallH, ridgeRise, over, ridgePct) {
@@ -409,7 +414,7 @@ function gableSlopes(W, L, wallH, ridgeRise, over, ridgePct) {
   res.handle = { type: "ridge", x: xr, y: ridgeH, w: 0.34, d: uLen };
   return res;
 }
-// Mái Nhật (hip): 2 dốc hình thang + 2 hình tam giác
+// Mái Nhật (hip): 2 dốc hình thang + 2 hình tam giác bịt đầu hông
 function hipSlopes(W, L, wallH, ridgeRise, over) {
   const run = W / 2 + over;
   const k = ridgeRise / (W / 2);
@@ -421,6 +426,7 @@ function hipSlopes(W, L, wallH, ridgeRise, over) {
   const vLen = Math.hypot(run, ridgeH - yEave);
   const rise = ridgeH - yEave;
   const res = [];
+  const extras = [];
   for (const side of [1, -1]) {
     const ridgeA = [0, ridgeH, -zr], ridgeB = [0, ridgeH, zr];
     const eaveB = [side * run, yEave, z1], eaveA = [side * run, yEave, z0];
@@ -437,7 +443,16 @@ function hipSlopes(W, L, wallH, ridgeRise, over) {
       uHalfAt: (vv) => { const t = (vv + vLen / 2) / vLen; return (uLen - (uLen - uRidge) * t) / 2; },
     });
   }
-  return { slopes: res, walls: [[0, 0, W, L, wallH]], apex: { x: 0, y: ridgeH } };
+  // bịt 2 tam giác đầu hông (trước/sau), ăn cùng texture mái
+  for (const zz of [z1, z0]) {
+    const tri = new THREE.Mesh(
+      triGeometry([-run, yEave, zz], [run, yEave, zz], [0, ridgeH, Math.sign(zz) * zr]),
+      roofMat(state.roofType, 2 * run, vLen)
+    );
+    tri.castShadow = tri.receiveShadow = true;
+    extras.push(tri);
+  }
+  return { slopes: res, walls: [[0, 0, W, L, wallH]], apex: { x: 0, y: ridgeH }, extras };
 }
 // Mái bằng: bản nóc phẳng, 1 mặt đặt pin
 function flatSlopes(W, L, wallH) {
@@ -509,79 +524,15 @@ function truncatedGable(W, L, wallH, angleDeg, midPct, ridgePct, over) {
     u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 0, 1), n: new THREE.Vector3(0, 1, 0),
     uLen: F, vLen: uLen, mesh: flat, uHalfAt: () => F / 2,
   });
-  // bịt 2 đầu hông hình thang (mép dải bằng lệch theo)
+  // bịt 2 đầu hông hình thang (mép dải bằng lệch theo); 2 tam giác phủ kín mặt ngũ giác
   const w2 = W / 2 - 0.02, l2 = L / 2, tY = topY - 0.02;
   for (const zz of [-l2, l2]) {
     extras.push(triCap([w2, wallH, zz], [right, tY, zz], [left, tY, zz]));
-    extras.push(triCap([-w2, wallH, zz], [left, tY, zz], [-w2, wallH, zz]));
+    extras.push(triCap([-w2, wallH, zz], [left, tY, zz], [w2, wallH, zz]));
   }
   res.handle = { type: "flat", x: xc, y: topY, w: F, d: uLen };
   return res;
 }
-// Nhà hình chữ L / T: danh sách khối chữ nhật, mỗi khối mái 2 dốc riêng
-function wingFootprints() {
-  const W = state.houseW, L = state.houseL;
-  const tanA = Math.tan(THREE.MathUtils.degToRad(state.roofAngle));
-  if (state.roofType === "l" || state.roofType === "l_nguoc") {
-    const w2 = W * 0.5, l2 = L * 0.45;
-    const s = state.roofType === "l" ? 1 : -1;
-    return [
-      { key: "main", w: W, l: L, cx: 0, cz: 0, wallH: state.wallH, ridgeH: tanA * (W / 2), axis: "z" },
-      { key: "wing", w: w2, l: l2, cx: s * (W / 2 + w2 / 2 - 0.01), cz: L * 0.275, wallH: state.wallH - 0.3, ridgeH: tanA * (w2 / 2), axis: "z" },
-    ];
-  }
-  // chữ T: thanh ngang phía trước + thân phía sau
-  const wBar = W * 1.7, lBar = L * 0.4;
-  const wStem = W * 0.6, lStem = L * 0.62;
-  return [
-    { key: "bar",  w: wBar, l: lBar, cx: 0, cz: L * 0.3, wallH: state.wallH, ridgeH: tanA * (lBar / 2), axis: "x" },
-    { key: "stem", w: wStem, l: lStem, cx: 0, cz: -L * 0.19, wallH: state.wallH, ridgeH: tanA * (wStem / 2), axis: "z" },
-  ];
-}
-function wingGable(fp) {
-  // đỉnh chạy theo axis; trả về slopes + walls cho 1 khối
-  const res = { slopes: [], walls: [[fp.cx, fp.cz, fp.w, fp.l, fp.wallH]] };
-  const over = 0.4;
-  const along = fp.axis === "z" ? fp.l : fp.w;   // chiều dài đỉnh
-  const span = fp.axis === "z" ? fp.w : fp.l;    // bề rộng mái
-  const k = fp.ridgeH / (span / 2);
-  const yEave = fp.wallH - over * k;
-  const ridgeAbs = fp.wallH + fp.ridgeH;
-  const a0 = -along / 2 - over, a1 = along / 2 + over;
-  const uLen = a1 - a0;
-  const run = span / 2 + over, rise = ridgeAbs - yEave;
-  const vLen = Math.hypot(run, rise);
-  const rotY = fp.axis === "z" ? 0 : Math.PI / 2; // axis x: xoay quỹ đạo
-  const toLocal = (a, s) => {
-    // a: toạ độ dọc đỉnh, s: toạ độ ngang dốc (+1/-1)
-    if (fp.axis === "z") return [fp.cx + s * run, 0, fp.cz + a];
-    return [fp.cx + a, 0, fp.cz - s * run];
-  };
-  for (const side of [1, -1]) {
-    const rA = toLocal(a0, 0).map((x, i) => i === 1 ? ridgeAbs : x);
-    const rB = toLocal(a1, 0).map((x, i) => i === 1 ? ridgeAbs : x);
-    const eB = toLocal(a1, side).map((x, i) => i === 1 ? yEave : x);
-    const eA = toLocal(a0, side).map((x, i) => i === 1 ? yEave : x);
-    const mesh = new THREE.Mesh(quadGeometry([rA, rB, eB, eA]), roofMat(state.roofType, uLen, vLen));
-    mesh.castShadow = mesh.receiveShadow = true;
-    const c = toLocal(0, side * run / 2); c[1] = (ridgeAbs + yEave) / 2;
-    const u = fp.axis === "z" ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0);
-    const sv = fp.axis === "z" ? new THREE.Vector3(-side * run / vLen, rise / vLen, 0)
-                               : new THREE.Vector3(0, rise / vLen, side * run / vLen);
-    const nv = fp.axis === "z" ? new THREE.Vector3(side * rise / vLen, run / vLen, 0)
-                               : new THREE.Vector3(0, run / vLen, -side * rise / vLen);
-    const nameVn = fp.key === "bar"
-      ? (side > 0 ? "Mái trước" : "Mái sau")
-      : (side > 0 ? "Mái phải" : "Mái trái");
-    res.slopes.push({
-      key: fp.key + (side > 0 ? "-p" : "-t"), label: nameVn,
-      origin: new THREE.Vector3(...c), u, v: sv, n: nv, uLen, vLen, mesh,
-      uHalfAt: () => uLen / 2,
-    });
-  }
-  return res;
-}
-
 let slabMesh = null;
 let houseApex = null; // đỉnh/mặt mái cao nhất {x, y} để vẽ đường ghi chiều cao
 let ridgeHandle = null; // thanh xanh kéo-thả để chỉnh đỉnh/dải bằng trên mô hình
@@ -597,13 +548,8 @@ function triCap(p1, p2, apex) {
 function addGableCaps(parent, fp) {
   const w2 = fp.w / 2 - 0.02, l2 = fp.l / 2, h = fp.wallH, r = fp.wallH + fp.ridgeH - 0.02;
   const dx = fp.dx || 0;
-  if (fp.axis !== "x") {
-    parent.add(triCap([fp.cx - w2, h, fp.cz - l2], [fp.cx + w2, h, fp.cz - l2], [fp.cx + dx, r, fp.cz - l2]));
-    parent.add(triCap([fp.cx - w2, h, fp.cz + l2], [fp.cx + w2, h, fp.cz + l2], [fp.cx + dx, r, fp.cz + l2]));
-  } else {
-    parent.add(triCap([fp.cx - l2, h, fp.cz - w2], [fp.cx - l2, h, fp.cz + w2], [fp.cx - l2, r, fp.cz]));
-    parent.add(triCap([fp.cx + l2, h, fp.cz - w2], [fp.cx + l2, h, fp.cz + w2], [fp.cx + l2, r, fp.cz]));
-  }
+  parent.add(triCap([fp.cx - w2, h, fp.cz - l2], [fp.cx + w2, h, fp.cz - l2], [fp.cx + dx, r, fp.cz - l2]));
+  parent.add(triCap([fp.cx - w2, h, fp.cz + l2], [fp.cx + w2, h, fp.cz + l2], [fp.cx + dx, r, fp.cz + l2]));
 }
 function buildHouse() {
   // xoá nội dung cũ
@@ -621,15 +567,8 @@ function buildHouse() {
     parts = hipSlopes(W, L, state.wallH, tanA * (W / 2), 0.4);
   } else if (state.roofType === "bang") {
     parts = flatSlopes(W, L, state.wallH + 0.2);
-  } else if (state.roofType === "hai_doc_bang") {
-    parts = truncatedGable(W, L, state.wallH, state.roofAngle, state.midFlatPct, state.ridgePct, 0.4);
   } else {
-    parts = { slopes: [], walls: [] };
-    for (const fp of wingFootprints()) {
-      const r = wingGable(fp);
-      parts.slopes.push(...r.slopes);
-      parts.walls.push(...r.walls);
-    }
+    parts = truncatedGable(W, L, state.wallH, state.roofAngle, state.midFlatPct, state.ridgePct, 0.4);
   }
 
   // tường
@@ -639,11 +578,9 @@ function buildHouse() {
     m.castShadow = m.receiveShadow = true;
     houseGroup.add(m);
   }
-  // bịt hông nhà cho các loại mái 2 dốc
+  // bịt hông nhà cho mái 2 dốc
   if (state.roofType === "ton" || state.roofType === "ngoi") {
     addGableCaps(houseGroup, { cx: 0, cz: 0, w: W, l: L, wallH: state.wallH, ridgeH: tanA * (W / 2), axis: "z", dx: W * (state.ridgePct / 100 - 0.5) });
-  } else if (state.roofType === "l" || state.roofType === "l_nguoc" || state.roofType === "t") {
-    for (const fp of wingFootprints()) addGableCaps(houseGroup, fp);
   }
   // mái
   for (const s of parts.slopes) houseGroup.add(s.mesh);
@@ -912,16 +849,8 @@ function setPointer(e) {
 renderer.domElement.addEventListener("pointerdown", (e) => {
   setPointer(e);
   raycaster.setFromCamera(pointer, camera);
-  // kéo thanh chỉnh đỉnh / dải bằng
-  if (ridgeHandle) {
-    const hh = raycaster.intersectObject(ridgeHandle, false);
-    if (hh.length) {
-      dragging = { type: "handle", kind: ridgeHandle.userData.handleType, planeY: ridgeHandle.position.y - 0.08 };
-      controls.enabled = false;
-      renderer.domElement.setPointerCapture(e.pointerId);
-      return;
-    }
-  }
+  // ưu tiên kéo chuỗi pin trước — trên mái 2 dốc + bằng, thanh chỉnh dải bằng nằm
+  // trùm cả dải mái bằng nên nếu xét trước sẽ che mất mọi cú kéo pin ở đó
   const panelMeshes = state.strings.flatMap(s => s.group ? s.group.children.filter(c => c.type === "Group") : [])
     .flatMap(t => t.children.filter(c => c.isMesh));
   const hits = raycaster.intersectObjects(panelMeshes, false);
@@ -934,6 +863,15 @@ renderer.domElement.addEventListener("pointerdown", (e) => {
     controls.enabled = false;
     selectString(id);
     renderer.domElement.setPointerCapture(e.pointerId);
+    return;
+  }
+  if (ridgeHandle) {
+    const hh = raycaster.intersectObject(ridgeHandle, false);
+    if (hh.length) {
+      dragging = { type: "handle", kind: ridgeHandle.userData.handleType, planeY: ridgeHandle.position.y - 0.08 };
+      controls.enabled = false;
+      renderer.domElement.setPointerCapture(e.pointerId);
+    }
   }
 });
 renderer.domElement.addEventListener("pointermove", (e) => {
