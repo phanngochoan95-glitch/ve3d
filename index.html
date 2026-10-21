@@ -680,9 +680,12 @@ function buildDimLines() {
         .addScaledVector(s.v, vv);
       houseGroup.add(dimLine(pAt(-s.vLen / 2), pAt(s.vLen / 2), s.u.clone().negate(), 0xe8590c));
     }
-    const sp = textSprite([s.label, `${s.uLen.toFixed(1)} × ${s.vLen.toFixed(1)} m`], "#1b2733", { overlay: true });
-    sp.position.copy(s.origin).addScaledVector(s.n, 0.12);
-    houseGroup.add(sp);
+    // nhãn diện tích mái: ẩn với mái đã lắp pin — pin che nhãn, đọc không được
+    if (!state.strings.some(st => st.slopeKey === s.key)) {
+      const sp = textSprite([s.label, `${s.uLen.toFixed(1)} × ${s.vLen.toFixed(1)} m`], "#1b2733", { overlay: true });
+      sp.position.copy(s.origin).addScaledVector(s.n, 0.12);
+      houseGroup.add(sp);
+    }
   }
   // cao đỉnh: đường đứng ở góc trước nhà
   if (houseApex) {
@@ -815,8 +818,7 @@ function addString() {
   };
   clampString(str);
   state.strings.push(str);
-  str.group = makeStringMesh(str);
-  if (str.group) houseGroup.add(str.group);
+  buildHouse(); // dựng lại để nhãn diện tích của mái có pin được ẩn
   selectString(str.id);
   refreshAll();
 }
@@ -834,6 +836,7 @@ function removeString(id) {
     state.strings.splice(i, 1);
   }
   if (state.selectedId === id) state.selectedId = state.strings[0]?.id ?? null;
+  buildHouse(); // dựng lại để nhãn diện tích của mái trống hiện lại
   refreshAll();
 }
 
@@ -1069,8 +1072,14 @@ $("angleRange").addEventListener("input", () => {
   $("angleVal").textContent = state.houseAngle + "°";
   houseGroup.rotation.y = THREE.MathUtils.degToRad(state.houseAngle);
 });
-// lưu ảnh
+// lưu ảnh — bản xuất sạch: ẩn tạm thanh kéo mái + khung chọn chuỗi (chỉ là UI chỉnh sửa)
 $("saveBtn").onclick = () => {
+  const hidden = [];
+  if (ridgeHandle && ridgeHandle.visible) { ridgeHandle.visible = false; hidden.push(ridgeHandle); }
+  for (const s of state.strings) {
+    const sel = s.group && s.group.userData.selBox;
+    if (sel && sel.visible) { sel.visible = false; hidden.push(sel); }
+  }
   renderer.render(scene, camera);
   renderer.domElement.toBlob(blob => {
     const a = document.createElement("a");
@@ -1078,6 +1087,8 @@ $("saveBtn").onclick = () => {
     a.download = "mo-phong-3d-pin.png";
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    for (const o of hidden) o.visible = true;
+    renderer.render(scene, camera);
   }, "image/png");
 };
 // reset
