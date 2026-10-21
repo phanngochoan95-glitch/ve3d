@@ -380,6 +380,7 @@ function gableSlopes(W, L, wallH, ridgeRise, over, ridgePct) {
       uHalfAt: () => uLen / 2,
     });
   }
+  res.handle = { type: "ridge", x: xr, y: ridgeH, w: 0.34, d: uLen };
   return res;
 }
 // Mái Nhật (hip): 2 dốc hình thang + 2 hình tam giác
@@ -433,52 +434,62 @@ function flatSlopes(W, L, wallH) {
     slab: true,
   };
 }
-// Mái 2 dốc 2 bên + dải mái bằng ở giữa (mái cắt cụt đỉnh)
-function truncatedGable(W, L, wallH, angleDeg, midPct, over) {
+// Mái 2 dốc 2 bên + dải mái bằng ở giữa (mái cắt cụt đỉnh); dải bằng dịch được vị trí theo ridgePct
+function truncatedGable(W, L, wallH, angleDeg, midPct, ridgePct, over) {
   const t = Math.tan(THREE.MathUtils.degToRad(angleDeg));
-  const s = Math.max(0.3, (W / 2) * (1 - midPct / 100)); // nửa bề rộng phần bằng giữa
-  const topY = wallH + t * (W / 2 - s);
-  const yEave = wallH - over * t;
+  const F = Math.max(0.4, W * Math.min(70, Math.max(10, midPct)) / 100); // bề rộng dải bằng
+  const p = Math.min(90, Math.max(10, ridgePct ?? 50));
+  let left = -W / 2 + (W * p) / 100 - F / 2;   // mép trái dải bằng
+  left = Math.max(-W / 2, Math.min(left, W / 2 - F));
+  const right = left + F;
+  const xc = (left + right) / 2;
+  const nominal = W / 2 - F / 2;               // nửa chạy dốc khi đối xứng (mốc cho góc nghiêng)
+  const topY = wallH + t * nominal;
   const z0 = -L / 2 - over, z1 = L / 2 + over;
   const uLen = z1 - z0;
   const extras = [];
   const res = { slopes: [], walls: [[0, 0, W, L, wallH]], extras };
-  for (const side of [-1, 1]) {
-    const runH = (W / 2 + over) - s;
+  const sideDefs = [
+    { side: -1, eaveX: -W / 2 - over, topX: left, runW: left + W / 2 },
+    { side: 1, eaveX: W / 2 + over, topX: right, runW: W / 2 - right },
+  ];
+  for (const sd of sideDefs) {
+    const run = sd.runW + over;
+    const yEave = wallH - over * ((topY - wallH) / sd.runW);
     const rise = topY - yEave;
-    const vLen = Math.hypot(runH, rise);
-    const topX = side * s, eaveX = side * (W / 2 + over);
-    const rA = [topX, topY, z0], rB = [topX, topY, z1];
-    const eB = [eaveX, yEave, z1], eA = [eaveX, yEave, z0];
+    const vLen = Math.hypot(run, rise);
+    const rA = [sd.topX, topY, z0], rB = [sd.topX, topY, z1];
+    const eB = [sd.eaveX, yEave, z1], eA = [sd.eaveX, yEave, z0];
     const mesh = new THREE.Mesh(quadGeometry([rA, rB, eB, eA]), roofMat(state.roofType, uLen, vLen));
     mesh.castShadow = mesh.receiveShadow = true;
     res.slopes.push({
-      key: side > 0 ? "phai" : "trai", label: side > 0 ? "Mái phải" : "Mái trái",
-      origin: new THREE.Vector3((topX + eaveX) / 2, (topY + yEave) / 2, 0),
+      key: sd.side > 0 ? "phai" : "trai", label: sd.side > 0 ? "Mái phải" : "Mái trái",
+      origin: new THREE.Vector3((sd.topX + sd.eaveX) / 2, (topY + yEave) / 2, 0),
       u: new THREE.Vector3(0, 0, 1),
-      v: new THREE.Vector3(-side * runH / vLen, rise / vLen, 0),
-      n: new THREE.Vector3(side * rise / vLen, runH / vLen, 0),
+      v: new THREE.Vector3(-sd.side * run / vLen, rise / vLen, 0),
+      n: new THREE.Vector3(sd.side * rise / vLen, run / vLen, 0),
       uLen, vLen, mesh, uHalfAt: () => uLen / 2,
     });
   }
   // dải mái bằng ở giữa
   const flat = new THREE.Mesh(
-    quadGeometry([[-s, topY, z0], [-s, topY, z1], [s, topY, z1], [s, topY, z0]]),
+    quadGeometry([[left, topY, z0], [left, topY, z1], [right, topY, z1], [right, topY, z0]]),
     new THREE.MeshLambertMaterial({ color: 0xb9bec4, side: THREE.DoubleSide })
   );
   flat.castShadow = flat.receiveShadow = true;
   res.slopes.push({
     key: "bang-giua", label: "Mái bằng giữa",
-    origin: new THREE.Vector3(0, topY, 0),
+    origin: new THREE.Vector3(xc, topY, 0),
     u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 0, 1), n: new THREE.Vector3(0, 1, 0),
-    uLen: 2 * s, vLen: uLen, mesh: flat, uHalfAt: () => s,
+    uLen: F, vLen: uLen, mesh: flat, uHalfAt: () => F / 2,
   });
-  // bịt 2 đầu hông hình thang
-  const w2 = W / 2 - 0.02, s2 = Math.max(0.15, s - 0.02), tY = topY - 0.02, l2 = L / 2;
+  // bịt 2 đầu hông hình thang (mép dải bằng lệch theo)
+  const w2 = W / 2 - 0.02, l2 = L / 2, tY = topY - 0.02;
   for (const zz of [-l2, l2]) {
-    extras.push(triCap([w2, wallH, zz], [s2, tY, zz], [-s2, tY, zz]));
-    extras.push(triCap([w2, wallH, zz], [-s2, tY, zz], [-w2, wallH, zz]));
+    extras.push(triCap([w2, wallH, zz], [right, tY, zz], [left, tY, zz]));
+    extras.push(triCap([-w2, wallH, zz], [left, tY, zz], [-w2, wallH, zz]));
   }
+  res.handle = { type: "flat", x: xc, y: topY, w: F, d: uLen };
   return res;
 }
 // Nhà hình chữ L / T: danh sách khối chữ nhật, mỗi khối mái 2 dốc riêng
@@ -546,6 +557,7 @@ function wingGable(fp) {
 }
 
 let slabMesh = null;
+let ridgeHandle = null; // thanh xanh kéo-thả để chỉnh đỉnh/dải bằng trên mô hình
 // Tấm bịt tam giác ở 2 đầu mái (hông nhà)
 function triCap(p1, p2, apex) {
   const geo = new THREE.BufferGeometry();
@@ -582,7 +594,7 @@ function buildHouse() {
   } else if (state.roofType === "bang") {
     parts = flatSlopes(W, L, state.wallH + 0.2);
   } else if (state.roofType === "hai_doc_bang") {
-    parts = truncatedGable(W, L, state.wallH, state.roofAngle, state.midFlatPct, 0.4);
+    parts = truncatedGable(W, L, state.wallH, state.roofAngle, state.midFlatPct, state.ridgePct, 0.4);
   } else {
     parts = { slopes: [], walls: [] };
     for (const fp of wingFootprints()) {
@@ -610,6 +622,19 @@ function buildHouse() {
   for (const ex of parts.extras || []) houseGroup.add(ex);
   if (parts.slab) slabMesh = parts.slopes[0].mesh;
   slopes = parts.slopes;
+  // thanh xanh kéo-thả chỉnh đỉnh / dải bằng
+  if (parts.handle) {
+    const h = parts.handle;
+    ridgeHandle = new THREE.Mesh(
+      new THREE.BoxGeometry(h.w, 0.16, h.d),
+      new THREE.MeshBasicMaterial({ color: 0x1473e6, transparent: true, opacity: 0.3 })
+    );
+    ridgeHandle.position.set(h.x, h.y + 0.08, 0);
+    ridgeHandle.userData.handleType = h.type;
+    houseGroup.add(ridgeHandle);
+  } else {
+    ridgeHandle = null;
+  }
 
   // dọn chuỗi pin có mã mái không còn tồn tại
   const validKeys = new Set(slopes.map(s => s.key));
@@ -821,6 +846,16 @@ function setPointer(e) {
 renderer.domElement.addEventListener("pointerdown", (e) => {
   setPointer(e);
   raycaster.setFromCamera(pointer, camera);
+  // kéo thanh chỉnh đỉnh / dải bằng
+  if (ridgeHandle) {
+    const hh = raycaster.intersectObject(ridgeHandle, false);
+    if (hh.length) {
+      dragging = { type: "handle", kind: ridgeHandle.userData.handleType, planeY: ridgeHandle.position.y - 0.08 };
+      controls.enabled = false;
+      renderer.domElement.setPointerCapture(e.pointerId);
+      return;
+    }
+  }
   const panelMeshes = state.strings.flatMap(s => s.group ? s.group.children.filter(c => c.type === "Group") : [])
     .flatMap(t => t.children.filter(c => c.isMesh));
   const hits = raycaster.intersectObjects(panelMeshes, false);
@@ -839,6 +874,22 @@ renderer.domElement.addEventListener("pointermove", (e) => {
   if (!dragging) return;
   setPointer(e);
   raycaster.setFromCamera(pointer, camera);
+  if (dragging.type === "handle") {
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -dragging.planeY);
+    const p = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(plane, p)) {
+      houseGroup.worldToLocal(p);
+      const W = state.houseW;
+      const np = Math.round(THREE.MathUtils.clamp(((p.x + W / 2) / W) * 100, 20, 80));
+      if (np !== state.ridgePct) {
+        state.ridgePct = np;
+        $("ridgePctRange").value = np;
+        $("ridgePctVal").textContent = np + " : " + (100 - np);
+        buildHouse(); refreshAll();
+      }
+    }
+    return;
+  }
   const p = new THREE.Vector3();
   if (raycaster.ray.intersectPlane(dragging.plane, p)) {
     houseGroup.worldToLocal(p);
@@ -933,7 +984,7 @@ renderRoofOptions();
 // tùy chỉnh mái
 function updateCustomFields() {
   $("midFlatField").style.display = state.roofType === "hai_doc_bang" ? "" : "none";
-  $("ridgePctField").style.display = (state.roofType === "ton" || state.roofType === "ngoi") ? "" : "none";
+  $("ridgePctField").style.display = (state.roofType === "ton" || state.roofType === "ngoi" || state.roofType === "hai_doc_bang") ? "" : "none";
   $("roofAngleField").style.display = state.roofType === "bang" ? "none" : "";
 }
 $("roofAngleRange").addEventListener("input", () => {
