@@ -141,16 +141,10 @@
       </div>
 
       <div class="field">
-        <label>Kích thước tấm pin (mm)</label>
-        <div class="dimension-grid two" style="margin-bottom:0">
-          <div class="dimension-field">
-            <label>Dài</label>
-            <input type="number" id="panelL" min="1400" max="2600" step="1" value="2278" />
-          </div>
-          <div class="dimension-field">
-            <label>Rộng</label>
-            <input type="number" id="panelW" min="900" max="1400" step="1" value="1133" />
-          </div>
+        <label>Tấm pin</label>
+        <div class="summary" style="margin-top:0">
+          <b>LONGi Hi-MO 7 LR7-72HGD 620M</b> · 2 mặt kính · half-cell<br>
+          144 half-cells (6×24) · bifacial 80±5%
         </div>
       </div>
 
@@ -217,7 +211,7 @@ const ROOF_TYPES = [
 ];
 const DEFAULTS = {
   roofType: "ton", houseW: 9, houseL: 11, mount: "apmai",
-  panelLmm: 2278, panelWmm: 1133, newCount: 9, slopeKey: null, houseAngle: 0,
+  panelLmm: 2382, panelWmm: 1134, newCount: 9, slopeKey: null, houseAngle: 0,
   roofAngle: 26, midFlatPct: 40, wallH: 3.0, ridgePct: 50,
 };
 const state = {
@@ -318,22 +312,54 @@ function roofMat(type, uLen, vLen) {
   if (type === "ton" || type === "hai_doc_bang") return new THREE.MeshLambertMaterial({ map: tonTex(uLen, vLen), side: THREE.DoubleSide });
   return new THREE.MeshLambertMaterial({ map: ngoiTex(uLen * 1.4, vLen * 1.4), side: THREE.DoubleSide });
 }
-// Mặt tấm pin: tế quang điện xanh đậm + viền nhôm
-function panelTexture() {
-  const c = document.createElement("canvas"); c.width = c.height = 256;
+// Mặt tấm pin LONGi Hi-MO 7 LR7-72HGD 620M: 144 nửa cell (6 cột × 24 hàng), viền nhôm
+// rot90=false: mặt X = cạnh ngắn (1134), Y = cạnh dài (2382) — dùng cho tấm đặt dọc
+function panelFaceTexture(rot90) {
+  const c = document.createElement("canvas");
+  c.width = rot90 ? 512 : 256;
+  c.height = rot90 ? 256 : 512;
   const g = c.getContext("2d");
-  g.fillStyle = "#0d2f55"; g.fillRect(0, 0, 256, 256);
-  g.strokeStyle = "#2a5f9e"; g.lineWidth = 2;
-  for (let i = 0; i <= 256; i += 32) {
-    g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke();
-    g.beginPath(); g.moveTo(0, i); g.lineTo(256, i); g.stroke();
+  const W = c.width, H = c.height;
+  g.fillStyle = "#08131f"; g.fillRect(0, 0, W, H);
+  const cols = 6, halfRows = 24;
+  const mx = W * 0.028, my = H * 0.014;
+  const cw = (W - 2 * mx) / cols, ch = (H - 2 * my) / halfRows;
+  for (let i = 0; i < cols; i++) {
+    for (let j = 0; j < halfRows; j++) {
+      const x = mx + i * cw, y = my + j * ch;
+      g.fillStyle = "#0e2440";
+      g.fillRect(x + 1.2, y + 1.2, cw - 2.4, ch - 2.4);
+      g.fillStyle = "#1a3a63";
+      g.fillRect(x + cw * 0.15, y + ch * 0.15, cw * 0.3, ch * 0.55);
+    }
+    // busbar dọc mảnh chạy suốt chiều dài tấm
+    g.strokeStyle = "#3d5c8c"; g.lineWidth = 1;
+    for (const f of [0.3, 0.5, 0.7]) {
+      g.beginPath();
+      g.moveTo(mx + i * cw + cw * f, my);
+      g.lineTo(mx + i * cw + cw * f, H - my);
+      g.stroke();
+    }
   }
-  g.strokeStyle = "#d9dde2"; g.lineWidth = 10;
-  g.strokeRect(0, 0, 256, 256);
-  const t = new THREE.CanvasTexture(c);
-  return t;
+  // khe đậm ngăn cách 12 cell (mỗi 2 nửa cell); chính giữa tấm khe rộng hơn (ranh giới half-cut)
+  g.strokeStyle = "#050b12";
+  for (let j = 0; j <= 12; j++) {
+    g.lineWidth = j === 6 ? 5 : 2.5;
+    const y = my + j * 2 * ch;
+    g.beginPath(); g.moveTo(mx, y); g.lineTo(W - mx, y); g.stroke();
+  }
+  // độ bóng mặt kính nhẹ
+  const sheen = g.createLinearGradient(0, 0, W, H);
+  sheen.addColorStop(0, "rgba(255,255,255,0.06)");
+  sheen.addColorStop(0.35, "rgba(255,255,255,0)");
+  g.fillStyle = sheen; g.fillRect(0, 0, W, H);
+  // viền nhôm
+  g.strokeStyle = "#d9dde2"; g.lineWidth = 9;
+  g.strokeRect(0, 0, W, H);
+  return new THREE.CanvasTexture(c);
 }
-const PANEL_FACE = new THREE.MeshLambertMaterial({ map: panelTexture() });
+const PANEL_FACE_DOC = new THREE.MeshLambertMaterial({ map: panelFaceTexture(false) });
+const PANEL_FACE_NGANG = new THREE.MeshLambertMaterial({ map: panelFaceTexture(true) });
 const PANEL_FRAME = new THREE.MeshLambertMaterial({ color: 0xd9dde2 });
 const RACK_MAT = new THREE.MeshLambertMaterial({ color: 0x8d949c });
 
@@ -741,9 +767,10 @@ function makeStringMesh(str) {
   g.add(tilt);
 
   for (const s of slots) {
+    const face = str.dir === "doc" ? PANEL_FACE_DOC : PANEL_FACE_NGANG;
     const box = new THREE.Mesh(
       new THREE.BoxGeometry(s.fU, s.fV, 0.045),
-      [PANEL_FRAME, PANEL_FRAME, PANEL_FRAME, PANEL_FRAME, PANEL_FACE, PANEL_FRAME]
+      [PANEL_FRAME, PANEL_FRAME, PANEL_FRAME, PANEL_FRAME, face, PANEL_FRAME]
     );
     box.rotation.x = -Math.PI / 2; // đưa mặt +z (texture) hướng theo +Y local (pháp tuyến)
     box.position.set(s.x, lift, s.y * k);
@@ -1036,16 +1063,6 @@ function onHouseDimChange() {
 }
 $("houseW").addEventListener("change", onHouseDimChange);
 $("houseL").addEventListener("change", onHouseDimChange);
-// kích thước tấm pin
-function onPanelDimChange() {
-  const l = parseFloat($("panelL").value), w = parseFloat($("panelW").value);
-  if (l >= 1400 && l <= 2600) state.panelLmm = l;
-  if (w >= 900 && w <= 1400) state.panelWmm = w;
-  for (const s of state.strings) { const g = makeStringMesh(s); if (g) { houseGroup.remove(s.group); s.group = g; houseGroup.add(g); } clampString(s); }
-  refreshAll();
-}
-$("panelL").addEventListener("change", onPanelDimChange);
-$("panelW").addEventListener("change", onPanelDimChange);
 // số tấm
 $("countMinus").onclick = () => { state.newCount = Math.max(1, state.newCount - 1); $("countInput").value = state.newCount; };
 $("countPlus").onclick = () => { state.newCount = Math.min(60, state.newCount + 1); $("countInput").value = state.newCount; };
@@ -1091,7 +1108,6 @@ $("resetBtn").onclick = () => {
   for (const s of state.strings) if (s.group) houseGroup.remove(s.group);
   Object.assign(state, DEFAULTS, { strings: [], selectedId: null, nextId: 1 });
   $("houseW").value = 9; $("houseL").value = 11;
-  $("panelL").value = 2278; $("panelW").value = 1133;
   $("countInput").value = 9;
   $("angleRange").value = 0; $("angleVal").textContent = "0°";
   $("roofAngleRange").value = 26; $("roofAngleVal").textContent = "26°";
