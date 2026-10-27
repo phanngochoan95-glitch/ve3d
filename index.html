@@ -382,6 +382,7 @@ const PANEL_FACE_DOC = new THREE.MeshLambertMaterial({ map: panelFaceTexture(fal
 const PANEL_FACE_NGANG = new THREE.MeshLambertMaterial({ map: panelFaceTexture(true) });
 const PANEL_FRAME = new THREE.MeshLambertMaterial({ color: 0xd9dde2 });
 const RACK_MAT = new THREE.MeshLambertMaterial({ color: 0x8d949c });
+const BALLAST_MAT = new THREE.MeshLambertMaterial({ color: 0xc9ced3 });
 
 /* ============================== Dựng nhà & mái ============================== */
 function quadGeometry(corners) {
@@ -878,6 +879,62 @@ function stringOrigin(slope, cx, cy) {
     .addScaledVector(slope.n, 0.02);
 }
 
+// thanh kim loại tròn nối 2 điểm (dùng cho cột/dầm/giằng khung đỡ)
+function barBetween(a, b, r) {
+  const dir = new THREE.Vector3().subVectors(b, a);
+  const len = dir.length();
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 8), RACK_MAT);
+  mesh.position.copy(a).addScaledVector(dir, 0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+  mesh.castShadow = true;
+  return mesh;
+}
+// Khung đỡ mái bằng (kiểu trang gốc): chân đế bê tông + cột trụ cao thấp theo mặt nghiêng
+// + dầm ngang + rail dọc nghiêng + giằng chéo chữ X ở 2 cột biên. Cả chuỗi nằm trên 1 mặt
+// phẳng 15°; đáy rail (yu) được nâng đủ cao để mép thấp nhất vẫn cách mái ~0.15 m.
+// Cột/dầm/giằng dựng trong hệ group (trục Y = đứng), rail con của tilt (đã nghiêng theo mặt pin).
+function buildFlatRack(g, tilt, totalU, totalV) {
+  const th = THREE.MathUtils.degToRad(15);
+  const sin = Math.sin(th), cos = Math.cos(th);
+  const halfZ = (totalV / 2) * cos;               // nửa sâu chuỗi trong hệ group (co lại vì mặt nghiêng)
+  const zRow = Math.max(0.35, halfZ - 0.4);       // hàng cột thụt vào mép 0.4 m
+  const rows = [-zRow, zRow];
+  if (halfZ > 3.4) rows.push(0);                  // chuỗi sâu thêm hàng giữa
+  const yu = Math.max(0.3, 0.31 * cos + zRow * sin, (0.12 * cos + halfZ * sin) / (cos * cos));
+  const lift = yu + 0.08;                         // tâm tấm pin trong hệ tilt
+  const yAt = z => (yu - z * sin) / cos;          // cao độ đáy rail tại z' hệ group
+  const nCol = Math.max(2, Math.round(totalU / 2.3));
+  const xs = [];
+  for (let i = 0; i <= nCol; i++) xs.push(-totalU / 2 + 0.25 + (totalU - 0.5) * i / nCol);
+  for (const r of rows) {
+    for (const x of xs) {
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.2, 0.26), BALLAST_MAT);
+      foot.position.set(x, 0.1, r);
+      foot.castShadow = foot.receiveShadow = true;
+      g.add(foot);
+      const top = yAt(r) - 0.05;
+      if (top > 0.3) g.add(barBetween(new THREE.Vector3(x, 0.14, r), new THREE.Vector3(x, top, r), 0.045));
+    }
+    g.add(barBetween(
+      new THREE.Vector3(xs[0], yAt(r) - 0.05, r),
+      new THREE.Vector3(xs[xs.length - 1], yAt(r) - 0.05, r), 0.04));
+  }
+  // giằng chéo chữ X nối 2 hàng cột tại cột biên trái/phải
+  for (const x of [xs[0], xs[xs.length - 1]]) {
+    g.add(barBetween(new THREE.Vector3(x, 0.15, zRow), new THREE.Vector3(x, yAt(-zRow) - 0.05, -zRow), 0.028));
+    g.add(barBetween(new THREE.Vector3(x, 0.15, -zRow), new THREE.Vector3(x, yAt(zRow) - 0.05, zRow), 0.028));
+  }
+  // rail dọc chạy theo mặt nghiêng, sát đáy panen (trong hệ tilt thì mặt này là phẳng)
+  for (const x of xs) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, totalV + 0.15), RACK_MAT);
+    rail.position.set(x, lift - 0.0525, 0);
+    rail.castShadow = true;
+    tilt.add(rail);
+  }
+  const selH = yAt(-zRow) + 0.3;
+  return { lift, selH, selY: selH / 2 - 0.12 };
+}
+
 function makeStringMesh(str) {
   const slope = slopeByKey(str.slopeKey);
   if (!slope) return null;
@@ -891,12 +948,16 @@ function makeStringMesh(str) {
   g.userData.slopeKey = str.slopeKey;
 
   const tilt = new THREE.Group();
-  let tiltAngle = 0, lift = 0.06;
+  let tiltAngle = 0, lift = 0.06, selDepth = 0.35, selY = 0;
+  const isFlat = slope.n.y > 0.9;
   if (state.mount === "khungsat") {
-    if (slope.n.y > 0.9) { tiltAngle = THREE.MathUtils.degToRad(15); lift = 0.35; }
-    else lift = 0.12;
+    if (isFlat) {
+      tiltAngle = THREE.MathUtils.degToRad(15); // mái bằng: mặt pin nghiêng 15° trên khung đỡ
+      const rack = buildFlatRack(g, tilt, totalU, totalV);
+      lift = rack.lift; selDepth = rack.selH; selY = rack.selY;
+    } else lift = 0.12;
   }
-  tilt.rotation.x = tiltAngle; // mái bằng: nghiêng về phía +v (sau nhà) để chân đáy quay ra trước
+  tilt.rotation.x = tiltAngle;
   g.add(tilt);
 
   for (const s of slots) {
@@ -910,7 +971,7 @@ function makeStringMesh(str) {
     box.castShadow = true;
     box.userData.stringId = str.id;
     tilt.add(box);
-    if (state.mount === "khungsat") {
+    if (state.mount === "khungsat" && !isFlat) {
       const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, lift + 0.05), RACK_MAT);
       leg.position.set(s.x, (lift + 0.05) / 2 - 0.02, (s.y - s.fV * 0.38) * k);
       tilt.add(leg);
@@ -918,11 +979,11 @@ function makeStringMesh(str) {
   }
   // khung chọn (nổi khung xanh quanh chuỗi đang chọn)
   const sel = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(totalU + 0.12, totalV + 0.12, 0.35)),
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(totalU + 0.12, totalV + 0.12, selDepth)),
     new THREE.LineBasicMaterial({ color: 0x1473e6 })
   );
   sel.rotation.x = Math.PI / 2;
-  sel.position.z = 0.1;
+  sel.position.set(0, selY, 0.1);
   sel.visible = str.id === state.selectedId;
   g.add(sel);
   g.userData.selBox = sel;
@@ -1286,6 +1347,74 @@ $("hourRange").addEventListener("input", () => {
   updateSun();
 });
 // lưu ảnh — bản xuất sạch: ẩn tạm thanh kéo mái + khung chọn chuỗi (chỉ là UI chỉnh sửa)
+// và đóng dấu khung thông số góc dưới trái để gửi khách ngay không phải gõ tay
+const YIELD_KWH_PER_KWP_DAY = 4.0; // hệ số sản lượng trung bình VN (kWh/kWp/ngày) dùng ước tính
+function watermarkInfo() {
+  const nPanels = state.strings.reduce((a, s) => a + placedPanels(s), 0);
+  const kw = kwOf(nPanels);
+  const roof = ROOF_TYPES.find(t => t.v === state.roofType);
+  return [
+    ["Số tấm pin", `${nPanels} tấm`],
+    ["Công suất", `≈ ${fmtKw(kw)} kWp`],
+    ["Kích thước mái", `${state.houseW} × ${state.houseL} m (${roof ? roof.label : "—"})`],
+    ["Loại lắp đặt", state.mount === "khungsat" ? "Có khung sắt" : "Áp mái"],
+    ["Sản lượng dự kiến", `≈ ${Math.round(kw * YIELD_KWH_PER_KWP_DAY * 30).toLocaleString("vi-VN")} kWh/tháng`],
+  ];
+}
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function drawWatermark(canvas, ctx) {
+  const s = canvas.width / Math.max(1, wrap.clientWidth); // pixel vật lý / css (màn retina *2)
+  const rows = watermarkInfo();
+  const d = new Date();
+  const title = `MÔ PHỎNG 3D ĐIỆN MẶT TRỜI · ${d.toLocaleDateString("vi-VN")}`;
+  const pad = 14 * s, rowH = 19 * s, titleH = 21 * s, gapTitle = 7 * s;
+  const FONT = 'px "Segoe UI", system-ui, Arial, sans-serif';
+  // co nhẹ cỡ chữ tiêu đề nếu khung tràn ngang (màn hình rất hẹp)
+  let titleSize = 14.5 * s;
+  ctx.font = `700 ${titleSize}${FONT}`;
+  while (ctx.measureText(title).width > canvas.width - 32 * s && titleSize > 11 * s) {
+    titleSize -= 0.5 * s;
+    ctx.font = `700 ${titleSize}${FONT}`;
+  }
+  const titleW = ctx.measureText(title).width;
+  ctx.font = `600 ${13.5 * s}${FONT}`;
+  let innerW = 0;
+  for (const [k, v] of rows) innerW = Math.max(innerW, ctx.measureText(k).width + 12 * s + ctx.measureText(v).width);
+  const boxW = Math.max(titleW, innerW) + pad * 2;
+  const boxH = pad * 2 + titleH + gapTitle + rows.length * rowH;
+  const x = 16 * s, y = canvas.height - boxH - 16 * s;
+  ctx.save();
+  roundRectPath(ctx, x, y, boxW, boxH, 10 * s);
+  ctx.fillStyle = "rgba(13, 27, 42, 0.78)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
+  ctx.lineWidth = Math.max(1, s);
+  ctx.stroke();
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#ffd43b";
+  ctx.fillText(title, x + pad, y + pad + titleH / 2);
+  ctx.font = `600 ${13.5 * s}${FONT}`;
+  let ty = y + pad + titleH + gapTitle + rowH / 2;
+  for (const [k, v] of rows) {
+    ctx.textAlign = "left";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+    ctx.fillText(k, x + pad, ty);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(v, x + boxW - pad, ty);
+    ty += rowH;
+  }
+  ctx.restore();
+}
 $("saveBtn").onclick = () => {
   const hidden = [];
   if (ridgeHandle && ridgeHandle.visible) { ridgeHandle.visible = false; hidden.push(ridgeHandle); }
@@ -1294,7 +1423,20 @@ $("saveBtn").onclick = () => {
     if (sel && sel.visible) { sel.visible = false; hidden.push(sel); }
   }
   renderer.render(scene, camera);
-  renderer.domElement.toBlob(blob => {
+  // chép khung hình sang canvas 2D để đóng dấu thông số trước khi tải;
+  // tô trước nền gradient trời (canvas WebGL trong suốt, nền này chỉ nằm sau canvas trên trang)
+  const out = document.createElement("canvas");
+  out.width = renderer.domElement.width; out.height = renderer.domElement.height;
+  const ctx = out.getContext("2d");
+  const sky = ctx.createLinearGradient(0, 0, 0, out.height);
+  sky.addColorStop(0, "#bfe3ff");
+  sky.addColorStop(0.6, "#e9f5ff");
+  sky.addColorStop(1, "#f3f7f2");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(renderer.domElement, 0, 0);
+  drawWatermark(out, ctx);
+  out.toBlob(blob => {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "mo-phong-3d-pin.png";
