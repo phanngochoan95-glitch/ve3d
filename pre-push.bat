@@ -45,8 +45,20 @@ if errorlevel 1 (
 git push
 if errorlevel 1 goto :fail
 echo.
-echo [OK] Da push. BUOC TIEP THEO: vao dashboard Render, chon service ve3d,
-echo      bam Manual Deploy - "Deploy latest commit" de trang web cap nhat.
+echo [OK] Da push. Kich hoat deploy Render qua deploy hook (URL doc tu _memory)...
+set HOOK_URL=
+if exist "..\_memory\render-deploy-hook.txt" (
+    for /f "usebackq delims=" %%u in ("..\_memory\render-deploy-hook.txt") do set "HOOK_URL=%%u"
+)
+if defined HOOK_URL (
+    curl.exe -s -X POST "%HOOK_URL%"
+    echo.
+    echo [OK] Da goi deploy hook. Cho ~15 giay build + toi da 5 phut cache CDN,
+    echo      roi kiem tra https://ve3d.onrender.com
+) else (
+    echo [!] Khong tim thay ..\_memory\render-deploy-hook.txt
+    echo     Vao dashboard Render, service ve3d, bam Manual Deploy - "Deploy latest commit".
+)
 goto :done
 
 :skip_push
