@@ -706,23 +706,73 @@ function layoutSlots(count, dir, slope) {
   const fV = dir === "doc" ? pL : pW;  // kích thước theo hướng dốc
   const fU = dir === "doc" ? pW : pL;  // kích thước ngang đỉnh
   const gap = 0.02, margin = 0.22;
-  const maxV = slope.vLen - 2 * margin;
-  const rows = Math.max(1, Math.floor((maxV + gap) / (fV + gap)));
-  const cols = Math.ceil(count / rows);
-  const slots = [];
-  const totalU = cols * (fU + gap) - gap;
-  const totalV = rows * (fV + gap) - gap;
-  for (let i = 0; i < count; i++) {
-    const col = Math.floor(i / rows), row = i % rows;
-    slots.push({
-      x: (col - (cols - 1) / 2) * (fU + gap),
-      y: (row - (rows - 1) / 2) * (fV + gap),
-      fU, fV,
-    });
+  // chuỗi phải nằm gọn trong mái: giới hạn cả số hàng (theo dốc) lẫn số cột (theo đỉnh)
+  const maxRows = Math.max(1, Math.floor((slope.vLen - 2 * margin + gap) / (fV + gap)));
+  const maxCols = Math.max(1, Math.floor((slope.uLen - 2 * margin + gap) / (fU + gap)));
+  // chọn ÍT hàng nhất để dàn rộng theo đỉnh mái (7 tấm ngang = 2 hàng 4+3, không phải 3 hàng chữ L)
+  let rows = maxRows;
+  for (let r = 1; r <= maxRows; r++) {
+    if (Math.ceil(count / r) <= maxCols) { rows = r; break; }
   }
-  return { slots, totalU, totalV, rows, cols };
+  const cols = Math.min(maxCols, Math.ceil(count / rows));
+  const capacity = maxRows * maxCols;
+  const shown = Math.min(count, capacity);
+  const pitchU = fU + gap, pitchV = fV + gap;
+  const slots = [];
+  // xếp từng hàng từ mép eave lên đỉnh; hàng cuối thiếu tấm thì căn giữa
+  const fullRows = Math.floor(shown / cols), lastRowCount = shown - fullRows * cols;
+  for (let row = 0; row < rows; row++) {
+    const m = row < fullRows ? cols : lastRowCount;
+    for (let j = 0; j < m; j++) {
+      slots.push({
+        x: (j - (m - 1) / 2) * pitchU,
+        y: (row - (rows - 1) / 2) * pitchV,
+        fU, fV,
+      });
+    }
+  }
+  return {
+    slots, totalU: cols * pitchU - gap, totalV: rows * pitchV - gap, rows, cols,
+    capacity, fits: shown >= count,
+  };
 }
 function slopeByKey(key) { return slopes.find(s => s.key === key) || null; }
+// tìm vị trí trống trên mặt mái cho chuỗi mới: quét từ mép eave lên, ưu tiên gần giữa đỉnh mái;
+// trả về null nếu mặt mái đã kín (khi đó giữ vị trí mặc định, người dùng tự kéo)
+function findFreeSpot(slope, tU, tV) {
+  const gap = 0.02, margin = 0.22;
+  const rects = state.strings
+    .filter(s => s.slopeKey === slope.key)
+    .map(s => {
+      const l = layoutSlots(s.count, s.dir, slope);
+      return { cx: s.cx, cy: s.cy, hu: l.totalU / 2 + gap, hv: l.totalV / 2 + gap };
+    });
+  const maxCx = slope.uLen / 2 - margin - tU / 2;
+  const maxCy = slope.vLen / 2 - margin - tV / 2;
+  if (maxCx < 0 || maxCy < 0) return null;
+  const step = 0.1;
+  for (let cy = -maxCy; cy <= maxCy + 1e-9; cy += step) {
+    let best = null;
+    for (let cx = -maxCx; cx <= maxCx + 1e-9; cx += step) {
+      const hit = rects.some(r => Math.abs(cx - r.cx) < r.hu + tU / 2 && Math.abs(cy - r.cy) < r.hv + tV / 2);
+      if (!hit) {
+        const score = Math.abs(cx);
+        if (!best || score < best.score) best = { cx, score };
+      }
+    }
+    if (best) return { cx: best.cx, cy };
+  }
+  return null;
+}
+// vị trí gốc nhóm chuỗi trên mặt mái (dùng chung khi dựng, kéo-thả, kẹp biên)
+function stringOrigin(slope, cx, cy) {
+  const w = new THREE.Vector3().crossVectors(slope.u, slope.n);
+  const k = Math.sign(slope.v.dot(w)) || 1;
+  return slope.origin.clone()
+    .addScaledVector(slope.u, cx)
+    .addScaledVector(w, cy * k)
+    .addScaledVector(slope.n, 0.02);
+}
 
 function makeStringMesh(str) {
   const slope = slopeByKey(str.slopeKey);
@@ -773,10 +823,7 @@ function makeStringMesh(str) {
   g.add(sel);
   g.userData.selBox = sel;
 
-  g.position.copy(slope.origin)
-    .addScaledVector(slope.u, str.cx)
-    .addScaledVector(w, str.cy * k)
-    .addScaledVector(slope.n, 0.02);
+  g.position.copy(stringOrigin(slope, str.cx, str.cy));
   // xoay chuỗi trong mặt mái: quay quanh pháp tuyến
   if (str.rot) {
     const q = new THREE.Quaternion().setFromAxisAngle(slope.n, THREE.MathUtils.degToRad(-str.rot));
@@ -812,10 +859,19 @@ function addString() {
   // chọn mái: ưu tiên lựa chọn hiện tại nếu còn hợp lệ
   if (!slopeByKey(state.slopeKey)) state.slopeKey = slopes[0]?.key ?? null;
   if (!state.slopeKey) return;
+  const slope = slopeByKey(state.slopeKey);
   const str = {
     id: state.nextId++, slopeKey: state.slopeKey, count: state.newCount,
-    dir: "doc", rot: 0, cx: 0, cy: -Math.min(1.2, slopes[0].vLen * 0.18), group: null,
+    dir: state.dirChoice || "doc", rot: 0, cx: 0, cy: 0, group: null,
   };
+  const margin = 0.22;
+  const lay = layoutSlots(str.count, str.dir, slope);
+  const maxCy = Math.max(0, slope.vLen / 2 - margin - lay.totalV / 2);
+  str.cx = 0;
+  str.cy = -Math.min(1.2, slope.vLen * 0.18);
+  // ưu tiên chỗ trống không đè chuỗi cũ (tự xếp thành khối gọn từ eave lên đỉnh)
+  const spot = findFreeSpot(slope, lay.totalU, lay.totalV);
+  if (spot) { str.cx = spot.cx; str.cy = spot.cy; }
   clampString(str);
   state.strings.push(str);
   buildHouse(); // dựng lại để nhãn diện tích của mái có pin được ẩn
@@ -904,13 +960,7 @@ renderer.domElement.addEventListener("pointermove", (e) => {
     dragging.str.cx = rel.dot(dragging.slope.u);
     dragging.str.cy = rel.dot(dragging.slope.v);
     clampString(dragging.str);
-    const slope = dragging.slope;
-    const w = new THREE.Vector3().crossVectors(slope.u, slope.n);
-    const k = Math.sign(slope.v.dot(w)) || 1;
-    dragging.str.group.position.copy(slope.origin)
-      .addScaledVector(slope.u, dragging.str.cx)
-      .addScaledVector(w, dragging.str.cy * k)
-      .addScaledVector(slope.n, 0.02);
+    dragging.str.group.position.copy(stringOrigin(dragging.slope, dragging.str.cx, dragging.str.cy));
     renderSummary();
   }
 });
@@ -954,7 +1004,12 @@ function renderStringList() {
     const slope = slopeByKey(s.slopeKey);
     const d = document.createElement("div");
     d.className = "string-item" + (s.id === state.selectedId ? " active" : "");
-    d.textContent = `Chuỗi ${s.id}: ${s.count} tấm (${s.dir === "doc" ? "dọc" : "ngang"}) · ${slope ? slope.label : "?"}`;
+    let txt = `Chuỗi ${s.id}: ${s.count} tấm (${s.dir === "doc" ? "dọc" : "ngang"}) · ${slope ? slope.label : "?"}`;
+    if (slope) {
+      const lay = layoutSlots(s.count, s.dir, slope);
+      if (!lay.fits) txt += ` · ⚠ vừa ${lay.capacity}/${s.count} tấm`;
+    }
+    d.textContent = txt;
     d.onclick = () => selectString(s.id);
     box.appendChild(d);
   }
@@ -974,6 +1029,12 @@ function renderSummary() {
   const sel = state.strings.find(s => s.id === state.selectedId);
   let html = `Tổng: <b>${state.strings.length} chuỗi</b> · <b>${nPanels} tấm</b>`;
   if (sel) html += `<br>Đang chọn chuỗi ${sel.id}: vị trí <b>${sel.cx.toFixed(1)}, ${sel.cy.toFixed(1)}</b> m`;
+  for (const s of state.strings) {
+    const slope = slopeByKey(s.slopeKey);
+    if (!slope) continue;
+    const lay = layoutSlots(s.count, s.dir, slope);
+    if (!lay.fits) html += `<br>⚠ Chuỗi ${s.id}: ${slope.label} chỉ vừa <b>${lay.capacity}</b> tấm, đang đặt <b>${s.count}</b>`;
+  }
   $("summary").innerHTML = html;
   $("hint").textContent = state.strings.length
     ? "Chạm vào chuỗi pin để kéo · chạm chỗ trống để xoay góc nhìn"
@@ -1031,6 +1092,7 @@ document.querySelectorAll("#dirOptions .opt").forEach(o => {
     const g = makeStringMesh(str);
     if (g) { houseGroup.remove(str.group); str.group = g; houseGroup.add(g); }
     clampString(str);
+    str.group.position.copy(stringOrigin(slopeByKey(str.slopeKey), str.cx, str.cy));
     refreshAll();
   };
 });
@@ -1065,6 +1127,7 @@ $("rotRange").addEventListener("input", () => {
   const g = makeStringMesh(str);
   if (g) { houseGroup.remove(str.group); str.group = g; houseGroup.add(g); }
   clampString(str);
+  str.group.position.copy(stringOrigin(slopeByKey(str.slopeKey), str.cx, str.cy));
 });
 // hướng nhà
 $("angleRange").addEventListener("input", () => {
