@@ -86,6 +86,10 @@
           <span class="house-dir-label">🧭 Hướng nhà <b id="angleVal">0°</b></span>
         </div>
         <input type="range" id="angleRange" min="0" max="360" step="1" value="0" aria-label="Chỉnh hướng nhà" />
+        <div class="house-dir-row" style="margin-top:10px;padding-top:8px;border-top:1px solid #edf0f3">
+          <span class="house-dir-label">☀ Giờ trong ngày <b id="hourVal">12h</b></span>
+        </div>
+        <input type="range" id="hourRange" min="6" max="18" step="0.5" value="12" aria-label="Giờ trong ngày" />
       </div>
       <div class="hint" id="hint">Kéo để xoay góc nhìn · Chụm 2 ngón để zoom</div>
       <button class="settings-fab" id="fab" title="Mở bảng điều khiển">⚙</button>
@@ -212,6 +216,7 @@ const DEFAULTS = {
   roofType: "ton", houseW: 9, houseL: 11, mount: "apmai",
   panelLmm: 2382, panelWmm: 1134, newCount: 9, slopeKey: null, houseAngle: 0,
   roofAngle: 26, midFlatPct: 40, wallH: 3.0, ridgePct: 50, dirChoice: "doc",
+  hour: 12,
 };
 const state = {
   ...DEFAULTS,
@@ -242,13 +247,29 @@ controls.maxDistance = 90;
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0xcfd8c4, 1.0));
 const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-sun.position.set(14, 24, 16);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -25; sun.shadow.camera.right = 25;
-sun.shadow.camera.top = 25; sun.shadow.camera.bottom = -25;
-sun.shadow.camera.far = 80;
+sun.shadow.camera.left = -45; sun.shadow.camera.right = 45;
+sun.shadow.camera.top = 45; sun.shadow.camera.bottom = -45;
+sun.shadow.camera.far = 140;
 scene.add(sun);
+// quả cầu vàng chỉ vị trí mặt trời trên trời (không đổ bóng)
+const sunMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(1.8, 24, 24),
+  new THREE.MeshBasicMaterial({ color: 0xffd54a })
+);
+scene.add(sunMesh);
+// mặt trời theo giờ: 6h mọc Đông (+X) → 12h đỉnh về Nam (+Z) → 18h lặn Tây (-X);
+// Vietnam nhiệt độ cao nên góc cao lúc trưa lấy ~62°, sớm/chiều không thấp quá 8° cho bóng đẹp
+function updateSun() {
+  const t = (state.hour - 6) / 12;
+  const az = t * Math.PI;
+  const alt = Math.max(THREE.MathUtils.degToRad(8), Math.sin(t * Math.PI) * THREE.MathUtils.degToRad(62));
+  const d = new THREE.Vector3(Math.cos(az) * Math.cos(alt), Math.sin(alt), Math.sin(az) * Math.cos(alt));
+  sun.position.copy(d).multiplyScalar(42);
+  sunMesh.position.copy(d).multiplyScalar(85);
+}
+updateSun();
 
 // Mặt đất: nền xanh nhạt có đốm noise nhẹ (texture tạo bằng canvas)
 function groundTexture() {
@@ -553,6 +574,66 @@ function addGableCaps(parent, fp) {
   parent.add(triCap([fp.cx - w2, h, fp.cz - l2], [fp.cx + w2, h, fp.cz - l2], [fp.cx + dx, r, fp.cz - l2]));
   parent.add(triCap([fp.cx - w2, h, fp.cz + l2], [fp.cx + w2, h, fp.cz + l2], [fp.cx + dx, r, fp.cz + l2]));
 }
+// La bàn trên nền — phong cách bản vẽ kỹ thuật: vòng mảnh + vạch chia + cung đỏ đánh dấu Bắc,
+// chữ 4 hướng đặt NGOÀI vòng nên không bị nhà che. Nằm trong scene (không thuộc houseGroup)
+// nên nhà xoay đến đâu vẫn biết phương vị. Bắc = -Z, Nam = +Z, Đông = +X, Tây = -X
+let compassMesh = null;
+function buildCompass() {
+  if (compassMesh) {
+    scene.remove(compassMesh);
+    compassMesh.material.map.dispose();
+    compassMesh.material.dispose();
+    compassMesh.geometry.dispose();
+    compassMesh = null;
+  }
+  const R = Math.max(state.houseW, state.houseL) / 2 + 2.0; // vòng la bàn bao quanh nhà
+  const c = document.createElement("canvas"); c.width = c.height = 1024;
+  const g = c.getContext("2d");
+  const C = 512, RING = 400;
+  // dải trắng mảnh làm nền cho vòng, nổi trên nền cỏ
+  g.strokeStyle = "rgba(255,255,255,0.55)"; g.lineWidth = 46;
+  g.beginPath(); g.arc(C, C, RING, 0, Math.PI * 2); g.stroke();
+  // vòng chính mảnh
+  g.strokeStyle = "#3a4754"; g.lineWidth = 4;
+  g.beginPath(); g.arc(C, C, RING, 0, Math.PI * 2); g.stroke();
+  // cung đỏ đánh dấu hướng Bắc (đỉnh canvas = -Z = Bắc)
+  g.strokeStyle = "#d0342c"; g.lineWidth = 10;
+  g.beginPath();
+  g.arc(C, C, RING, THREE.MathUtils.degToRad(-104), THREE.MathUtils.degToRad(-76));
+  g.stroke();
+  // vạch chia mỗi 15°, dài dần ở 45° và 90°; vạch Bắc màu đỏ
+  for (let a = 0; a < 360; a += 15) {
+    const major = a % 90 === 0, mid = a % 45 === 0;
+    const len = major ? 30 : mid ? 20 : 11;
+    const rad = THREE.MathUtils.degToRad(a - 90);
+    g.strokeStyle = a === 0 ? "#d0342c" : "#3a4754";
+    g.lineWidth = major ? 5 : 2.5;
+    g.beginPath();
+    g.moveTo(C + Math.cos(rad) * (RING - len), C + Math.sin(rad) * (RING - len));
+    g.lineTo(C + Math.cos(rad) * (RING - 3), C + Math.sin(rad) * (RING - 3));
+    g.stroke();
+  }
+  // chữ 4 hướng với viền trắng mảnh — đọc được trên mọi nền
+  g.font = "700 58px system-ui, sans-serif";
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.lineWidth = 10; g.strokeStyle = "rgba(255,255,255,0.85)"; g.lineJoin = "round";
+  const put = (txt, dx, dy, color) => {
+    const x = C + dx, y = C + dy;
+    g.strokeText(txt, x, y);
+    g.fillStyle = color; g.fillText(txt, x, y);
+  };
+  put("BẮC", 0, -438, "#d0342c");
+  put("NAM", 0, 438, "#2b3a49");
+  put("ĐÔNG", 438, 0, "#2b3a49");
+  put("TÂY", -438, 0, "#2b3a49");
+  compassMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(R * 2.56, R * 2.56),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false })
+  );
+  compassMesh.rotation.x = -Math.PI / 2;
+  compassMesh.position.y = 0.03;
+  scene.add(compassMesh);
+}
 function buildHouse() {
   // xoá nội dung cũ
   houseGroup.clear();
@@ -619,6 +700,7 @@ function buildHouse() {
   }
 
   buildDimLines();
+  buildCompass();
   rebuildStringGroups();
   renderSlopeOptions();
 }
@@ -1193,6 +1275,16 @@ $("angleRange").addEventListener("input", () => {
   $("angleVal").textContent = state.houseAngle + "°";
   houseGroup.rotation.y = THREE.MathUtils.degToRad(state.houseAngle);
 });
+// giờ trong ngày — mặt trời + bóng đổ
+function hourLabel(h) {
+  const hh = Math.floor(h), mm = Math.round((h - hh) * 60);
+  return mm ? `${hh}h${mm}` : `${hh}h`;
+}
+$("hourRange").addEventListener("input", () => {
+  state.hour = parseFloat($("hourRange").value);
+  $("hourVal").textContent = hourLabel(state.hour);
+  updateSun();
+});
 // lưu ảnh — bản xuất sạch: ẩn tạm thanh kéo mái + khung chọn chuỗi (chỉ là UI chỉnh sửa)
 $("saveBtn").onclick = () => {
   const hidden = [];
@@ -1223,6 +1315,8 @@ $("resetBtn").onclick = () => {
   $("midFlatRange").value = 40; $("midFlatVal").textContent = "40%";
   $("ridgePctRange").value = 50; $("ridgePctVal").textContent = "50 : 50";
   $("wallHRange").value = 3; $("wallHVal").textContent = "3.0 m";
+  $("hourRange").value = 12; $("hourVal").textContent = "12h";
+  updateSun();
   houseGroup.rotation.y = 0;
   document.querySelectorAll("#mountOptions .opt").forEach(x =>
     x.classList.toggle("active", x.dataset.v === "apmai"));
