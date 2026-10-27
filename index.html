@@ -717,34 +717,45 @@ function layoutSlots(count, dir, slope) {
   const fV = dir === "doc" ? pL : pW;  // kích thước theo hướng dốc
   const fU = dir === "doc" ? pW : pL;  // kích thước ngang đỉnh
   const gap = 0.02, margin = 0.22;
+  const pitchU = fU + gap, pitchV = fV + gap;
   // chuỗi phải nằm gọn trong mái: giới hạn cả số hàng (theo dốc) lẫn số cột (theo đỉnh)
   const maxRows = Math.max(1, Math.floor((slope.vLen - 2 * margin + gap) / (fV + gap)));
-  const maxCols = Math.max(1, Math.floor((slope.uLen - 2 * margin + gap) / (fU + gap)));
-  // chọn ÍT hàng nhất để dàn rộng theo đỉnh mái (7 tấm ngang = 2 hàng 4+3, không phải 3 hàng chữ L)
-  let rows = maxRows;
-  for (let r = 1; r <= maxRows; r++) {
-    if (Math.ceil(count / r) <= maxCols) { rows = r; break; }
+  // mái thu hẹp dần lên đỉnh (mái Nhật): bề rộng khả dụng tính tại MÉP TRÊN của từng hàng
+  // (nơi hẹp nhất — mép hông là đường chéo, chỉ xét tâm hàng sẽ bị tràn góc)
+  const tapered = 2 * slope.uHalfAt(slope.vLen / 2) < slope.uLen - 0.01;
+  const caps = [];
+  for (let r = 0; r < maxRows; r++) {
+    if (!tapered) {
+      caps.push(Math.max(1, Math.floor((slope.uLen - 2 * margin + gap) / (fU + gap))));
+      continue;
+    }
+    const vTop = -slope.vLen / 2 + margin + fV + r * pitchV;
+    const usable = 2 * (slope.uHalfAt(vTop) - margin);
+    caps.push(Math.max(0, Math.floor((usable + gap) / (fU + gap))));
   }
-  const cols = Math.min(maxCols, Math.ceil(count / rows));
-  const capacity = maxRows * maxCols;
+  const capacity = caps.reduce((a, b) => a + b, 0);
   const shown = Math.min(count, capacity);
-  const pitchU = fU + gap, pitchV = fV + gap;
+  // điền từ mép eave lên đỉnh, mỗi hàng vừa bề rộng của chính hàng đó; hàng thiếu tấm căn giữa
   const slots = [];
-  // xếp từng hàng từ mép eave lên đỉnh; hàng cuối thiếu tấm thì căn giữa
-  const fullRows = Math.floor(shown / cols), lastRowCount = shown - fullRows * cols;
-  for (let row = 0; row < rows; row++) {
-    const m = row < fullRows ? cols : lastRowCount;
+  let remaining = shown, rowsUsed = 0, maxCols = 0;
+  for (let r = 0; r < maxRows && remaining > 0; r++) {
+    const m = Math.min(caps[r], remaining);
+    if (m <= 0) break;
+    rowsUsed++;
+    maxCols = Math.max(maxCols, m);
     for (let j = 0; j < m; j++) {
       slots.push({
         x: (j - (m - 1) / 2) * pitchU,
-        y: (row - (rows - 1) / 2) * pitchV,
+        y: tapered ? -slope.vLen / 2 + margin + fV / 2 + r * pitchV
+                   : (r - (rowsUsed - 1) / 2) * pitchV,
         fU, fV,
       });
     }
+    remaining -= m;
   }
   return {
-    slots, totalU: cols * pitchU - gap, totalV: rows * pitchV - gap, rows, cols,
-    capacity, fits: shown >= count,
+    slots, totalU: maxCols * pitchU - gap, totalV: rowsUsed * pitchV - gap,
+    rows: rowsUsed, cols: maxCols, capacity, fits: shown >= count,
   };
 }
 function slopeByKey(key) { return slopes.find(s => s.key === key) || null; }
@@ -858,12 +869,30 @@ function updateSelectionVisual() {
 function clampString(str) {
   const slope = slopeByKey(str.slopeKey);
   if (!slope) return;
-  const { totalU, totalV } = layoutSlots(str.count, str.dir, slope);
+  const { totalU, totalV, slots } = layoutSlots(str.count, str.dir, slope);
+  if (!slots.length) return;
   const margin = 0.22;
-  const halfU = Math.max(0, slope.uLen / 2 - margin - totalU / 2);
-  const halfV = Math.max(0, slope.vLen / 2 - margin - totalV / 2);
-  str.cx = THREE.MathUtils.clamp(str.cx, -halfU, halfU);
-  str.cy = THREE.MathUtils.clamp(str.cy, -halfV, halfV);
+  const tapered = 2 * slope.uHalfAt(slope.vLen / 2) < slope.uLen - 0.01;
+  if (!tapered) {
+    const halfU = Math.max(0, slope.uLen / 2 - margin - totalU / 2);
+    const halfV = Math.max(0, slope.vLen / 2 - margin - totalV / 2);
+    str.cx = THREE.MathUtils.clamp(str.cx, -halfU, halfU);
+    str.cy = THREE.MathUtils.clamp(str.cy, -halfV, halfV);
+    return;
+  }
+  // mái thu hẹp: mép từng tấm không được vượt bề rộng mái tại đúng hàng của nó
+  const ys = slots.map(s => s.y);
+  const topY = Math.max(...ys), botY = Math.min(...ys);
+  str.cy = THREE.MathUtils.clamp(str.cy,
+    -slope.vLen / 2 + margin + slots[0].fV / 2 - botY,
+    slope.vLen / 2 - margin - slots[0].fV / 2 - topY);
+  let bound = Infinity;
+  for (const s of slots) {
+    // xét mép trên của tấm (hẹp nhất) thay vì tâm
+    bound = Math.min(bound, slope.uHalfAt(str.cy + s.y + s.fV / 2) - margin - s.fU / 2 - Math.abs(s.x));
+  }
+  bound = Math.max(0, bound);
+  str.cx = THREE.MathUtils.clamp(str.cx, -bound, bound);
 }
 
 function addString() {
