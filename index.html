@@ -144,7 +144,7 @@
         <label>Tấm pin</label>
         <div class="summary" style="margin-top:0">
           <b>LONGi Hi-MO 7 LR7-72HGD 620M</b> · 2 mặt kính · half-cell<br>
-          144 half-cells (6×24) · bifacial 80±5%
+          144 half-cells (6×24) · bifacial 80±5% · <b>620 Wp/tấm</b>
         </div>
       </div>
 
@@ -164,6 +164,7 @@
           <div class="frame-action active" id="addBtn">＋ Thêm chuỗi</div>
           <div class="frame-action" id="clearBtn">🗑 Xoá tất cả</div>
         </div>
+        <div class="frame-action" id="autoBtn" style="margin-top:8px">⚡ Xếp tự động (lấp đầy mái trống)</div>
       </div>
 
       <div class="field" id="stringsField" style="display:none">
@@ -206,10 +207,11 @@ const ROOF_TYPES = [
   { v: "bang",    label: "Mái bằng" },
   { v: "hai_doc_bang", label: "Mái 2 dốc + bằng" },
 ];
+const PANEL_WATT = 620; // LONGi Hi-MO 7 LR7-72HGD 620M — Wp/tấm dùng tính công suất
 const DEFAULTS = {
   roofType: "ton", houseW: 9, houseL: 11, mount: "apmai",
   panelLmm: 2382, panelWmm: 1134, newCount: 9, slopeKey: null, houseAngle: 0,
-  roofAngle: 26, midFlatPct: 40, wallH: 3.0, ridgePct: 50,
+  roofAngle: 26, midFlatPct: 40, wallH: 3.0, ridgePct: 50, dirChoice: "doc",
 };
 const state = {
   ...DEFAULTS,
@@ -701,6 +703,15 @@ function buildDimLines() {
 function panelDims() {
   return { pL: state.panelLmm / 1000, pW: state.panelWmm / 1000 };
 }
+function kwOf(nPanels) { return nPanels * PANEL_WATT / 1000; }
+function fmtKw(x) { return x.toFixed(2).replace(/\.?0+$/, ""); }
+// số tấm thực tế nằm trên mái (count có thể vượt sức chứa sau khi đổi mái/kích thước)
+function placedPanels(str) {
+  const slope = slopeByKey(str.slopeKey);
+  if (!slope) return str.count;
+  const lay = layoutSlots(str.count, str.dir, slope);
+  return lay.fits ? str.count : lay.capacity;
+}
 function layoutSlots(count, dir, slope) {
   const { pL, pW } = panelDims();
   const fV = dir === "doc" ? pL : pW;  // kích thước theo hướng dốc
@@ -1004,7 +1015,7 @@ function renderStringList() {
     const slope = slopeByKey(s.slopeKey);
     const d = document.createElement("div");
     d.className = "string-item" + (s.id === state.selectedId ? " active" : "");
-    let txt = `Chuỗi ${s.id}: ${s.count} tấm (${s.dir === "doc" ? "dọc" : "ngang"}) · ${slope ? slope.label : "?"}`;
+    let txt = `Chuỗi ${s.id}: ${s.count} tấm (${s.dir === "doc" ? "dọc" : "ngang"}) · ${slope ? slope.label : "?"} · ${fmtKw(kwOf(placedPanels(s)))} kWp`;
     if (slope) {
       const lay = layoutSlots(s.count, s.dir, slope);
       if (!lay.fits) txt += ` · ⚠ vừa ${lay.capacity}/${s.count} tấm`;
@@ -1025,9 +1036,9 @@ function renderSelField() {
   $("rotLabel").textContent = str.rot + "°";
 }
 function renderSummary() {
-  const nPanels = state.strings.reduce((a, s) => a + s.count, 0);
+  const nPanels = state.strings.reduce((a, s) => a + placedPanels(s), 0);
   const sel = state.strings.find(s => s.id === state.selectedId);
-  let html = `Tổng: <b>${state.strings.length} chuỗi</b> · <b>${nPanels} tấm</b>`;
+  let html = `Tổng: <b>${state.strings.length} chuỗi</b> · <b>${nPanels} tấm</b> · <span class="kw-value">≈ ${fmtKw(kwOf(nPanels))} kWp</span>`;
   if (sel) html += `<br>Đang chọn chuỗi ${sel.id}: vị trí <b>${sel.cx.toFixed(1)}, ${sel.cy.toFixed(1)}</b> m`;
   for (const s of state.strings) {
     const slope = slopeByKey(s.slopeKey);
@@ -1113,6 +1124,24 @@ $("countInput").addEventListener("change", () => {
   $("countInput").value = state.newCount;
 });
 $("addBtn").onclick = addString;
+// xếp tự động: mỗi mái còn trống đặt 1 chuỗi kín mái (theo hướng tấm đang chọn)
+$("autoBtn").onclick = () => {
+  const added = [];
+  for (const slope of slopes) {
+    if (state.strings.some(s => s.slopeKey === slope.key)) continue;
+    const lay = layoutSlots(1, state.dirChoice, slope);
+    if (lay.capacity < 1) continue;
+    const str = { id: state.nextId++, slopeKey: slope.key, count: lay.capacity,
+      dir: state.dirChoice, rot: 0, cx: 0, cy: 0, group: null };
+    state.strings.push(str);
+    added.push(str);
+  }
+  if (added.length) {
+    buildHouse();
+    selectString(added[added.length - 1].id);
+    refreshAll();
+  }
+};
 $("clearBtn").onclick = () => {
   for (const s of state.strings) if (s.group) houseGroup.remove(s.group);
   state.strings = []; state.selectedId = null;
