@@ -45,6 +45,9 @@
   .summary { margin-top: 14px; padding: 14px; background: #f5f8fb; border-radius: 8px; font-size: 13px; color: #36424e; line-height: 1.7; }
   .summary b { color: #1b2733; }
   .summary .kw-value { font-weight: 700; color: #1473e6; }
+  .notice { display: none; margin-top: 12px; padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; border: 1.5px solid #9dc3f2; background: #eef5ff; color: #0d5bbd; }
+  .notice.warn { border-color: #f0c36d; background: #fff7e8; color: #8a5a00; }
+  .notice.ok { border-color: #8fd9b0; background: #eafaf1; color: #1b7a4b; }
   .save-btn { margin-top: 16px; width: 100%; padding: 12px; font-size: 14px; font-weight: 600; color: #fff; background: #1473e6; border: none; border-radius: 8px; cursor: pointer; transition: background .15s ease; }
   .save-btn:hover { background: #0d5bbd; }
   .save-btn:active { transform: translateY(1px); }
@@ -192,6 +195,7 @@
       <div class="summary" id="summary">
         Tổng: <b>0 chuỗi</b> · <b>0 tấm</b>
       </div>
+      <div class="notice" id="notice"></div>
 
       <button class="save-btn" id="saveBtn">📷 Lưu ảnh mô phỏng</button>
       <button class="reset-btn" id="resetBtn">Reset mô phỏng</button>
@@ -818,13 +822,20 @@ function layoutSlots(count, dir, slope) {
   }
   const capacity = caps.reduce((a, b) => a + b, 0);
   const shown = Math.min(count, capacity);
+  // đếm số hàng cần dùng TRƯỚC để căn giữa khối theo chiều dốc
+  // (trước đây dùng rowsUsed đang tăng dần nên khối bị đẩy lệch lên nửa hàng)
+  let rowsUsed = 0;
+  for (let need = shown; need > 0 && rowsUsed < maxRows; rowsUsed++) {
+    const m = Math.min(caps[rowsUsed], need);
+    if (m <= 0) { rowsUsed = Math.max(0, rowsUsed); break; }
+    need -= m;
+  }
   // điền từ mép eave lên đỉnh, mỗi hàng vừa bề rộng của chính hàng đó; hàng thiếu tấm căn giữa
   const slots = [];
-  let remaining = shown, rowsUsed = 0, maxCols = 0;
-  for (let r = 0; r < maxRows && remaining > 0; r++) {
+  let remaining = shown, maxCols = 0;
+  for (let r = 0; r < rowsUsed && remaining > 0; r++) {
     const m = Math.min(caps[r], remaining);
     if (m <= 0) break;
-    rowsUsed++;
     maxCols = Math.max(maxCols, m);
     for (let j = 0; j < m; j++) {
       slots.push({
@@ -842,32 +853,154 @@ function layoutSlots(count, dir, slope) {
   };
 }
 function slopeByKey(key) { return slopes.find(s => s.key === key) || null; }
-// tìm vị trí trống trên mặt mái cho chuỗi mới: quét từ mép eave lên, ưu tiên gần giữa đỉnh mái;
-// trả về null nếu mặt mái đã kín (khi đó giữ vị trí mặc định, người dùng tự kéo)
-function findFreeSpot(slope, tU, tV) {
-  const gap = 0.02, margin = 0.22;
-  const rects = state.strings
-    .filter(s => s.slopeKey === slope.key)
-    .map(s => {
-      const l = layoutSlots(s.count, s.dir, slope);
-      return { cx: s.cx, cy: s.cy, hu: l.totalU / 2 + gap, hv: l.totalV / 2 + gap };
-    });
-  const maxCx = slope.uLen / 2 - margin - tU / 2;
-  const maxCy = slope.vLen / 2 - margin - tV / 2;
-  if (maxCx < 0 || maxCy < 0) return null;
-  const step = 0.1;
-  for (let cy = -maxCy; cy <= maxCy + 1e-9; cy += step) {
-    let best = null;
-    for (let cx = -maxCx; cx <= maxCx + 1e-9; cx += step) {
-      const hit = rects.some(r => Math.abs(cx - r.cx) < r.hu + tU / 2 && Math.abs(cy - r.cy) < r.hv + tV / 2);
-      if (!hit) {
-        const score = Math.abs(cx);
-        if (!best || score < best.score) best = { cx, score };
+/* ---------------- Kiểm tra sức chứa / chỗ trống trên mái ---------------- */
+// khung bao của 1 chuỗi ĐÃ đặt (trong hệ toạ độ mặt mái) để kiểm tra chồng lấn
+// nửa khe hở 0.01 m mỗi bên (khe thật giữa 2 tấm là 0.02) → 2 chuỗi sát nhau vẫn được coi là không đè
+function stringFootprint(slope, str) {
+  const lay = layoutSlots(str.count, str.dir, slope);
+  const half = 0.01;
+  if ((str.rot % 180) === 0) {
+    return { cx: str.cx, cy: str.cy, hu: lay.totalU / 2 + half, hv: lay.totalV / 2 + half };
+  }
+  const rad = Math.hypot(lay.totalU, lay.totalV) / 2 + half; // chuỗi đã xoay: lấy bán kính ngoại tiếp cho an toàn
+  return { cx: str.cx, cy: str.cy, hu: rad, hv: rad };
+}
+function otherFootprints(slope, exceptId) {
+  return state.strings
+    .filter(s => s.slopeKey === slope.key && s.id !== exceptId)
+    .map(s => stringFootprint(slope, s));
+}
+// khối tấm `lay` đặt tại (cx,cy) có đè lên chuỗi khác không
+function collides(cx, cy, lay, fps) {
+  const hu = lay.totalU / 2 + 0.01, hv = lay.totalV / 2 + 0.01;
+  return fps.some(f => Math.abs(cx - f.cx) < f.hu + hu - 1e-6 && Math.abs(cy - f.cy) < f.hv + hv - 1e-6);
+}
+// khối tấm có nằm gọn trong mặt mái không (mái Nhật: xét bề rộng tại đúng hàng của tấm)
+function insideRoof(slope, cx, cy, lay) {
+  const margin = 0.22;
+  if (lay.totalU > slope.uLen - 2 * margin + 1e-6) return false;
+  if (lay.totalV > slope.vLen - 2 * margin + 1e-6) return false;
+  const tapered = 2 * slope.uHalfAt(slope.vLen / 2) < slope.uLen - 0.01;
+  if (!tapered) {
+    return Math.abs(cx) + lay.totalU / 2 <= slope.uLen / 2 - margin + 1e-6
+        && Math.abs(cy) + lay.totalV / 2 <= slope.vLen / 2 - margin + 1e-6;
+  }
+  for (const s of lay.slots) {
+    const vTop = cy + s.y + s.fV / 2;
+    if (vTop > slope.vLen / 2 - margin + 1e-6) return false;
+    if (cy + s.y - s.fV / 2 < -slope.vLen / 2 + margin - 1e-6) return false;
+    if (Math.abs(cx + s.x) + s.fU / 2 > slope.uHalfAt(vTop) - margin + 1e-6) return false;
+  }
+  return true;
+}
+// tìm vị trí trống cho khối `lay` tấm: ưu tiên giữa mái rồi mới dạt ra (mái Nhật hẹp dần
+// lên đỉnh nên đặt lệch lên trên dễ tràn hông; quét từ giữa ra luôn chọn được chỗ rộng nhất)
+function findFreeSpot(slope, lay) {
+  const margin = 0.22, step = 0.08;
+  const fps = otherFootprints(slope, null);
+  const maxCx = slope.uLen / 2 - margin - lay.totalU / 2;
+  const maxCy = slope.vLen / 2 - margin - lay.totalV / 2;
+  if (maxCx < -1e-9 || maxCy < -1e-9) return null;
+  const nY = Math.floor(maxCy / step + 1e-9), nX = Math.floor(maxCx / step + 1e-9);
+  for (let ky = 0; ky <= nY; ky++) {
+    const cy = ky * step;
+    for (let k = 0; k <= nX; k++) {
+      const cx = k * step;
+      for (const [x, y] of [[cx, cy], [-cx, cy], [cx, -cy], [-cx, -cy]]) {
+        if (insideRoof(slope, x, y, lay) && !collides(x, y, lay, fps)) return { cx: x, cy: y };
       }
     }
-    if (best) return { cx: best.cx, cy };
   }
   return null;
+}
+// sức chứa tấm của 1 mái theo hướng tấm (dọc/ngang)
+function roofCapacity(slope, dir) {
+  return layoutSlots(1, dir, slope).capacity;
+}
+// số tấm đã có thật trên mái
+function roofUsed(slope) {
+  return state.strings.filter(s => s.slopeKey === slope.key)
+    .reduce((a, s) => a + placedPanels(s), 0);
+}
+// tìm phương án đặt chuỗi: giảm dần số tấm tới khi vừa chỗ trống THẬT (không đè chuỗi cũ)
+function planPlacement(slope, wanted, dir) {
+  const cap = roofCapacity(slope, dir);
+  for (let n = Math.min(wanted, cap); n >= 1; n--) {
+    const lay = layoutSlots(n, dir, slope);
+    if (!lay.fits || !lay.slots.length) continue;
+    const spot = findFreeSpot(slope, lay);
+    if (spot) return { count: n, cx: spot.cx, cy: spot.cy };
+  }
+  return null;
+}
+// Xếp lại toàn bộ chuỗi trên 1 mái thành khối liền nhau (giữ nguyên số chuỗi và số tấm mỗi chuỗi).
+// Dùng khi mái còn chỗ nhưng chuỗi đang nằm giữa mái nên không nhét thêm được chuỗi mới.
+// Trả về [{cy}] theo đúng thứ tự state.strings trên mái + 1 phần tử cuối cho chuỗi mới, null nếu bó tay.
+function repackSlope(slope, dir, addCount) {
+  const existing = state.strings.filter(s => s.slopeKey === slope.key);
+  if (!existing.length) return null;
+  // chuỗi đã xoay hoặc khác hướng tấm: không tự xếp lại (để người dùng tự kéo)
+  if (existing.some(s => s.dir !== dir || (s.rot % 180) !== 0)) return null;
+  const counts = existing.map(s => s.count).concat(addCount);
+  const total = counts.reduce((a, b) => a + b, 0);
+  const cap = roofCapacity(slope, dir);
+  if (total > cap) return null;
+  // lấy bố cục chuẩn của cả mái, gom slot theo hàng để biết số cột từng hàng
+  const layAll = layoutSlots(total, dir, slope);
+  const rowMap = new Map();
+  for (const s of layAll.slots) {
+    const key = s.y.toFixed(3);
+    if (!rowMap.has(key)) rowMap.set(key, { y: s.y, n: 0 });
+    rowMap.get(key).n++;
+  }
+  const rows = [...rowMap.values()].sort((a, b) => a.y - b.y);
+  const plan = [];
+  let ri = 0;
+  for (const c of counts) {
+    let need = c, ySum = 0, taken = 0;
+    while (need > 0 && ri < rows.length) {
+      const r = rows[ri++];
+      const k = Math.min(need, r.n);
+      ySum += r.y * k; taken += k; need -= k;
+    }
+    if (need > 0) return null;               // không đủ hàng
+    plan.push({ cy: ySum / taken });
+  }
+  // kiểm tra phương án: từng chuỗi phải nằm gọn trong mái và không đè nhau
+  const fps = [];
+  for (let i = 0; i < counts.length; i++) {
+    const lay = layoutSlots(counts[i], dir, slope);
+    if (!insideRoof(slope, 0, plan[i].cy, lay)) return null;
+    const hv = lay.totalV / 2 + 0.01;
+    for (const f of fps) if (Math.abs(plan[i].cy - f.cy) < hv + f.hv - 1e-6) return null;
+    fps.push({ cy: plan[i].cy, hv });
+  }
+  return plan;
+}
+// Đặt 1 chuỗi mới lên mái CÓ KIỂM TRA: tôn trọng sức chứa, không đè chuỗi cũ;
+// nếu chật thì thử xếp lại các chuỗi cũ (repack) trước khi bó tay.
+function placeStringOnSlope(slope, wanted, dir) {
+  const cap = roofCapacity(slope, dir);
+  const used = roofUsed(slope);
+  const free = Math.max(0, cap - used);
+  if (free < 1) return { error: "full", cap, used, free };
+  const want = Math.min(wanted, free);
+  let plan = planPlacement(slope, want, dir);
+  let repacked = false;
+  if (!plan) {
+    const rp = repackSlope(slope, dir, want);
+    if (rp) {
+      const olds = state.strings.filter(s => s.slopeKey === slope.key);
+      olds.forEach((s, i) => { s.cx = 0; s.cy = rp[i].cy; });
+      plan = { count: want, cx: 0, cy: rp[olds.length].cy };
+      repacked = true;
+    }
+  }
+  if (!plan) return { error: "fragmented", cap, used, free };
+  const str = { id: state.nextId++, slopeKey: slope.key, count: plan.count,
+    dir, rot: 0, cx: plan.cx, cy: plan.cy, group: null };
+  state.strings.push(str);
+  return { str, cap, used, free, wanted, repacked };
 }
 // vị trí gốc nhóm chuỗi trên mặt mái (dùng chung khi dựng, kéo-thả, kẹp biên)
 function stringOrigin(slope, cx, cy) {
@@ -1009,33 +1142,37 @@ function updateSelectionVisual() {
     if (s.group) s.group.userData.selBox.visible = s.id === state.selectedId;
   }
 }
-function clampString(str) {
-  const slope = slopeByKey(str.slopeKey);
-  if (!slope) return;
-  const { totalU, totalV, slots } = layoutSlots(str.count, str.dir, slope);
-  if (!slots.length) return;
+// kẹp vị trí khối tấm vào trong mặt mái (dùng chung khi dựng, kéo-thả, đổi hướng)
+function clampSpot(slope, lay, cx, cy) {
   const margin = 0.22;
   const tapered = 2 * slope.uHalfAt(slope.vLen / 2) < slope.uLen - 0.01;
   if (!tapered) {
-    const halfU = Math.max(0, slope.uLen / 2 - margin - totalU / 2);
-    const halfV = Math.max(0, slope.vLen / 2 - margin - totalV / 2);
-    str.cx = THREE.MathUtils.clamp(str.cx, -halfU, halfU);
-    str.cy = THREE.MathUtils.clamp(str.cy, -halfV, halfV);
-    return;
+    const halfU = Math.max(0, slope.uLen / 2 - margin - lay.totalU / 2);
+    const halfV = Math.max(0, slope.vLen / 2 - margin - lay.totalV / 2);
+    return { cx: THREE.MathUtils.clamp(cx, -halfU, halfU), cy: THREE.MathUtils.clamp(cy, -halfV, halfV) };
   }
   // mái thu hẹp: mép từng tấm không được vượt bề rộng mái tại đúng hàng của nó
+  const slots = lay.slots;
   const ys = slots.map(s => s.y);
   const topY = Math.max(...ys), botY = Math.min(...ys);
-  str.cy = THREE.MathUtils.clamp(str.cy,
+  const y = THREE.MathUtils.clamp(cy,
     -slope.vLen / 2 + margin + slots[0].fV / 2 - botY,
     slope.vLen / 2 - margin - slots[0].fV / 2 - topY);
   let bound = Infinity;
   for (const s of slots) {
     // xét mép trên của tấm (hẹp nhất) thay vì tâm
-    bound = Math.min(bound, slope.uHalfAt(str.cy + s.y + s.fV / 2) - margin - s.fU / 2 - Math.abs(s.x));
+    bound = Math.min(bound, slope.uHalfAt(y + s.y + s.fV / 2) - margin - s.fU / 2 - Math.abs(s.x));
   }
   bound = Math.max(0, bound);
-  str.cx = THREE.MathUtils.clamp(str.cx, -bound, bound);
+  return { cx: THREE.MathUtils.clamp(cx, -bound, bound), cy: y };
+}
+function clampString(str) {
+  const slope = slopeByKey(str.slopeKey);
+  if (!slope) return;
+  const lay = layoutSlots(str.count, str.dir, slope);
+  if (!lay.slots.length) return;
+  const p = clampSpot(slope, lay, str.cx, str.cy);
+  str.cx = p.cx; str.cy = p.cy;
 }
 
 function addString() {
@@ -1043,23 +1180,29 @@ function addString() {
   if (!slopeByKey(state.slopeKey)) state.slopeKey = slopes[0]?.key ?? null;
   if (!state.slopeKey) return;
   const slope = slopeByKey(state.slopeKey);
-  const str = {
-    id: state.nextId++, slopeKey: state.slopeKey, count: state.newCount,
-    dir: state.dirChoice || "doc", rot: 0, cx: 0, cy: 0, group: null,
-  };
-  const margin = 0.22;
-  const lay = layoutSlots(str.count, str.dir, slope);
-  const maxCy = Math.max(0, slope.vLen / 2 - margin - lay.totalV / 2);
-  str.cx = 0;
-  str.cy = -Math.min(1.2, slope.vLen * 0.18);
-  // ưu tiên chỗ trống không đè chuỗi cũ (tự xếp thành khối gọn từ eave lên đỉnh)
-  const spot = findFreeSpot(slope, lay.totalU, lay.totalV);
-  if (spot) { str.cx = spot.cx; str.cy = spot.cy; }
-  clampString(str);
-  state.strings.push(str);
+  const dir = state.dirChoice || "doc";
+  const wanted = state.newCount;
+  // KIỂM TRA sức chứa + chỗ trống (trước đây thêm vô điều kiện → đè chuỗi cũ, vượt sức chứa mái)
+  const res = placeStringOnSlope(slope, wanted, dir);
+  if (res.error === "full") {
+    notify(`${slope.label} đã kín chỗ: ${res.used}/${res.cap} tấm. Xoá chuỗi bớt, đổi hướng tấm (↕/↔) hoặc chọn mái khác.`, "warn");
+    return;
+  }
+  if (res.error) {
+    notify(`${slope.label} còn ${res.free} tấm trống nhưng không đủ khoảng liền mạch — thử đổi hướng tấm (↕/↔) hoặc dùng ⚡ Xếp tự động.`, "warn");
+    return;
+  }
   buildHouse(); // dựng lại để nhãn diện tích của mái có pin được ẩn
-  selectString(str.id);
+  selectString(res.str.id);
   refreshAll();
+  const n = res.str.count;
+  if (res.repacked) {
+    notify(`Đã xếp lại các chuỗi cũ để nhường chỗ — thêm ${n} tấm · ${slope.label} giờ ${res.used + n}/${res.cap} tấm.`, "ok");
+  } else if (n < wanted) {
+    notify(`${slope.label} chỉ còn chỗ cho ${n} tấm — đã thêm ${n}/${wanted} tấm (sức chứa mái: ${res.cap} tấm).`, "info");
+  } else {
+    notify(`Đã thêm chuỗi ${n} tấm · ${slope.label} · còn ${Math.max(0, res.cap - res.used - n)} tấm trống.`, "ok");
+  }
 }
 function selectString(id) {
   state.selectedId = id;
@@ -1148,11 +1291,32 @@ renderer.domElement.addEventListener("pointermove", (e) => {
   }
 });
 window.addEventListener("pointerup", () => {
-  if (dragging) { dragging = null; controls.enabled = true; renderSelField(); }
+  if (dragging) {
+    const d = dragging;
+    dragging = null; controls.enabled = true; renderSelField();
+    // kéo-thả: nhắc nếu chuỗi bị đè lên chuỗi khác (không chặn — người dùng tự quyết vị trí)
+    if (d.str && d.slope) {
+      const lay = layoutSlots(d.str.count, d.str.dir, d.slope);
+      if (collides(d.str.cx, d.str.cy, lay, otherFootprints(d.slope, d.str.id))) {
+        notify(`Chuỗi ${d.str.id} đang đè lên chuỗi khác trên ${d.slope.label} — kéo lệch ra hoặc xoá bớt.`, "warn");
+      }
+    }
+  }
 });
 
 /* ============================== Giao diện panel ============================== */
 const $ = id => document.getElementById(id);
+// thông báo ngắn trong panel (tự ẩn sau 7 s) — dùng cho kiểm tra sức chứa mái
+let noticeTimer = null;
+function notify(msg, kind = "info") {
+  const el = $("notice");
+  if (!el) return;
+  el.textContent = msg;
+  el.className = "notice" + (kind === "warn" ? " warn" : kind === "ok" ? " ok" : "");
+  el.style.display = "block";
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => { el.style.display = "none"; }, 7000);
+}
 function renderRoofOptions() {
   const box = $("roofOptions"); box.innerHTML = "";
   for (const t of ROOF_TYPES) {
@@ -1187,10 +1351,13 @@ function renderStringList() {
     const slope = slopeByKey(s.slopeKey);
     const d = document.createElement("div");
     d.className = "string-item" + (s.id === state.selectedId ? " active" : "");
-    let txt = `Chuỗi ${s.id}: ${s.count} tấm (${s.dir === "doc" ? "dọc" : "ngang"}) · ${slope ? slope.label : "?"} · ${fmtKw(kwOf(placedPanels(s)))} kWp`;
+    // hiển thị số tấm THẬT trên mái (không phải số nhập) để khỏi lệch với hình 3D
+    const placed = placedPanels(s);
+    let txt = `Chuỗi ${s.id}: ${placed} tấm (${s.dir === "doc" ? "dọc" : "ngang"}) · ${slope ? slope.label : "?"} · ${fmtKw(kwOf(placed))} kWp`;
+    if (s.rot) txt += ` · xoay ${s.rot}°`;
     if (slope) {
       const lay = layoutSlots(s.count, s.dir, slope);
-      if (!lay.fits) txt += ` · ⚠ vừa ${lay.capacity}/${s.count} tấm`;
+      if (!lay.fits) txt += ` · ⚠ đặt ${s.count}, vừa ${lay.capacity}`;
     }
     d.textContent = txt;
     d.onclick = () => selectString(s.id);
@@ -1212,6 +1379,14 @@ function renderSummary() {
   const sel = state.strings.find(s => s.id === state.selectedId);
   let html = `Tổng: <b>${state.strings.length} chuỗi</b> · <b>${nPanels} tấm</b> · <span class="kw-value">≈ ${fmtKw(kwOf(nPanels))} kWp</span>`;
   if (sel) html += `<br>Đang chọn chuỗi ${sel.id}: vị trí <b>${sel.cx.toFixed(1)}, ${sel.cy.toFixed(1)}</b> m`;
+  // sức chứa của mái đang nhắm tới — để người dùng thấy trước khi bấm Thêm
+  const activeSlope = slopeByKey(state.slopeKey);
+  if (activeSlope) {
+    const adir = state.dirChoice || "doc";
+    const cap = roofCapacity(activeSlope, adir);
+    const used = roofUsed(activeSlope);
+    html += `<br>${activeSlope.label} (${adir === "ngang" ? "ngang" : "dọc"}): <b>${used}/${cap}</b> tấm · còn <b>${Math.max(0, cap - used)}</b> chỗ`;
+  }
   for (const s of state.strings) {
     const slope = slopeByKey(s.slopeKey);
     if (!slope) continue;
@@ -1271,11 +1446,26 @@ document.querySelectorAll("#dirOptions .opt").forEach(o => {
   o.onclick = () => {
     const str = state.strings.find(s => s.id === state.selectedId);
     if (!str) return;
-    str.dir = o.dataset.v;
+    const next = o.dataset.v;
+    if (next === str.dir) return;
+    const slope = slopeByKey(str.slopeKey);
+    const prev = str.dir;
+    // đổi hướng làm chuỗi rộng/dài hơn: kiểm tra còn vừa mái và không đè chuỗi khác
+    str.dir = next;
+    const lay = layoutSlots(str.count, str.dir, slope);
+    const p = clampSpot(slope, lay, str.cx, str.cy);
+    const bad = !lay.fits
+      || !insideRoof(slope, p.cx, p.cy, lay)
+      || collides(p.cx, p.cy, lay, otherFootprints(slope, str.id));
+    if (bad) {
+      str.dir = prev;
+      renderSelField();
+      notify(`Không đủ chỗ cho chuỗi ${str.count} tấm hướng ${next === "doc" ? "dọc" : "ngang"} trên ${slope.label}${lay.fits ? " (vướng chuỗi khác)" : ` (mái chỉ vừa ${lay.capacity} tấm hướng này)`}.`, "warn");
+      return;
+    }
+    str.cx = p.cx; str.cy = p.cy;
     const g = makeStringMesh(str);
     if (g) { houseGroup.remove(str.group); str.group = g; houseGroup.add(g); }
-    clampString(str);
-    str.group.position.copy(stringOrigin(slopeByKey(str.slopeKey), str.cx, str.cy));
     refreshAll();
   };
 });
@@ -1296,22 +1486,31 @@ $("countInput").addEventListener("change", () => {
   $("countInput").value = state.newCount;
 });
 $("addBtn").onclick = addString;
-// xếp tự động: mỗi mái còn trống đặt 1 chuỗi kín mái (theo hướng tấm đang chọn)
+// xếp tự động: lấp phần mái CÒN TRỐNG (không đè chuỗi đã có, không vượt sức chứa mái)
 $("autoBtn").onclick = () => {
+  const dir = state.dirChoice || "doc";
   const added = [];
+  const notes = [];
+  let repacked = 0;
   for (const slope of slopes) {
-    if (state.strings.some(s => s.slopeKey === slope.key)) continue;
-    const lay = layoutSlots(1, state.dirChoice, slope);
-    if (lay.capacity < 1) continue;
-    const str = { id: state.nextId++, slopeKey: slope.key, count: lay.capacity,
-      dir: state.dirChoice, rot: 0, cx: 0, cy: 0, group: null };
-    state.strings.push(str);
-    added.push(str);
+    const cap = roofCapacity(slope, dir);
+    if (cap < 1) continue;
+    const used = roofUsed(slope);
+    if (used >= cap) { notes.push(`${slope.label} đã kín ${used}/${cap}`); continue; }
+    const res = placeStringOnSlope(slope, cap - used, dir);
+    if (res.error) { notes.push(`${slope.label} còn ${cap - used} tấm nhưng không xếp được`); continue; }
+    if (res.repacked) repacked++;
+    added.push(res.str);
   }
   if (added.length) {
     buildHouse();
     selectString(added[added.length - 1].id);
     refreshAll();
+    const total = added.reduce((a, s) => a + s.count, 0);
+    notify(`⚡ Đã xếp thêm ${added.length} chuỗi · ${total} tấm${repacked ? ` (xếp lại ${repacked} mái)` : ""}.${notes.length ? " " + notes.join("; ") + "." : ""}`, "ok");
+  } else {
+    refreshAll();
+    notify(notes.length ? `Không còn chỗ trống: ${notes.join("; ")}.` : "Không có mái trống để xếp.", "warn");
   }
 };
 $("clearBtn").onclick = () => {
@@ -1462,6 +1661,10 @@ $("resetBtn").onclick = () => {
   houseGroup.rotation.y = 0;
   document.querySelectorAll("#mountOptions .opt").forEach(x =>
     x.classList.toggle("active", x.dataset.v === "apmai"));
+  // trước đây ô "Loại mái" bị kẹt ở loại vừa chọn (state về tôn nhưng chip vẫn sáng loại cũ)
+  renderRoofOptions();
+  updateCustomFields();
+  $("notice").style.display = "none";
   buildHouse(); refreshAll();
 };
 // mobile bottom sheet
@@ -1485,8 +1688,11 @@ renderer.setAnimationLoop(() => {
   controls.update();
   renderer.render(scene, camera);
 });
-// debug: xem nhanh trạng thái từ console
-window.__solar = { state, getSlopes: () => slopes, THREE };
+// debug: xem nhanh trạng thái từ console + kiểm tra sức chứa mái
+window.__solar = {
+  state, getSlopes: () => slopes, THREE,
+  layoutSlots, placedPanels, roofCapacity, roofUsed, planPlacement, repackSlope, addString, notify,
+};
 </script>
 </body>
 </html>
