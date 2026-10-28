@@ -48,6 +48,16 @@
   .notice { display: none; margin-top: 12px; padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; border: 1.5px solid #9dc3f2; background: #eef5ff; color: #0d5bbd; }
   .notice.warn { border-color: #f0c36d; background: #fff7e8; color: #8a5a00; }
   .notice.ok { border-color: #8fd9b0; background: #eafaf1; color: #1b7a4b; }
+  #ioField > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: #36424e; margin-bottom: 8px; list-style: none; }
+  #ioField > summary::-webkit-details-marker { display: none; }
+  #ioField > summary::after { content: " ▾"; color: #9aa6b2; }
+  .io-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .io-grid .frame-action { font-size: 12px; padding: 9px 4px; white-space: nowrap; }
+  .io-name { display: flex; gap: 8px; margin: 8px 0; }
+  .io-name input { flex: 1; min-width: 0; height: 38px; padding: 0 10px; font-size: 13px; font-family: inherit; border: 1.5px solid #d6dbe0; border-radius: 8px; color: #1b2733; }
+  .io-name .frame-action { width: auto; white-space: nowrap; }
+  .io-select { width: 100%; height: 38px; padding: 0 8px; font-size: 13px; font-family: inherit; border: 1.5px solid #d6dbe0; border-radius: 8px; color: #1b2733; background: #fff; margin-bottom: 8px; }
+  .frame-action:disabled { opacity: .45; cursor: not-allowed; }
   .save-btn { margin-top: 16px; width: 100%; padding: 12px; font-size: 14px; font-weight: 600; color: #fff; background: #1473e6; border: none; border-radius: 8px; cursor: pointer; transition: background .15s ease; }
   .save-btn:hover { background: #0d5bbd; }
   .save-btn:active { transform: translateY(1px); }
@@ -126,6 +136,10 @@
           <label style="display:block;font-size:12px;font-weight:600;color:#36424e;margin-bottom:2px">Chiều cao tường: <b id="wallHVal" style="color:#1473e6">3.0 m</b></label>
           <input type="range" id="wallHRange" min="2.6" max="4.5" step="0.2" value="3" aria-label="Chiều cao tường" />
         </div>
+        <div id="edgeField" style="margin-top:10px">
+          <label style="display:block;font-size:12px;font-weight:600;color:#36424e;margin-bottom:2px">Khoảng cách mép mái: <b id="edgeVal" style="color:#1473e6">0.22 m</b></label>
+          <input type="range" id="edgeRange" min="0.1" max="0.6" step="0.02" value="0.22" aria-label="Khoảng cách từ mép mái" />
+        </div>
       </div>
 
       <div class="dimension-grid two">
@@ -197,6 +211,25 @@
       </div>
       <div class="notice" id="notice"></div>
 
+      <details class="field" id="ioField" open>
+        <summary>💾 Lưu · Chia sẻ · Xuất số liệu</summary>
+        <div class="io-grid">
+          <button class="frame-action" id="undoBtn" title="Hoàn tác (Ctrl+Z)">↩ Hoàn tác</button>
+          <button class="frame-action" id="redoBtn" title="Làm lại (Ctrl+Y)">↪ Làm lại</button>
+          <button class="frame-action" id="shareBtn" title="Copy link chia sẻ thiết kế">🔗 Chia sẻ</button>
+        </div>
+        <div class="io-name">
+          <input type="text" id="designName" placeholder="Tên thiết kế (không bắt buộc)" maxlength="40" aria-label="Tên thiết kế" />
+          <button class="frame-action" id="saveDesignBtn">💾 Lưu</button>
+        </div>
+        <select id="designSelect" class="io-select" aria-label="Thiết kế đã lưu"></select>
+        <div class="io-grid">
+          <button class="frame-action" id="loadDesignBtn">📂 Mở</button>
+          <button class="frame-action" id="delDesignBtn">🗑 Xoá</button>
+          <button class="frame-action" id="exportBtn" title="Xuất bảng số liệu để dán vào báo giá">⬇ CSV</button>
+        </div>
+      </details>
+
       <button class="save-btn" id="saveBtn">📷 Lưu ảnh mô phỏng</button>
       <button class="reset-btn" id="resetBtn">Reset mô phỏng</button>
     </div>
@@ -220,7 +253,7 @@ const DEFAULTS = {
   roofType: "ton", houseW: 9, houseL: 11, mount: "apmai",
   panelLmm: 2382, panelWmm: 1134, newCount: 9, slopeKey: null, houseAngle: 0,
   roofAngle: 26, midFlatPct: 40, wallH: 3.0, ridgePct: 50, dirChoice: "doc",
-  hour: 12,
+  hour: 12, edgeMargin: 0.22, // khoảng cách chừa từ mép mái (m) — chỉnh được bằng slider
 };
 const state = {
   ...DEFAULTS,
@@ -331,10 +364,49 @@ function ngoiTex(rx, ry) {
     }
   }, rx, ry);
 }
-function wallMat() { return new THREE.MeshLambertMaterial({ color: 0xf3f1ec }); }
-function roofMat(type, uLen, vLen) {
-  if (type === "ton" || type === "hai_doc_bang") return new THREE.MeshLambertMaterial({ map: tonTex(uLen, vLen), side: THREE.DoubleSide });
-  return new THREE.MeshLambertMaterial({ map: ngoiTex(uLen * 1.4, vLen * 1.4), side: THREE.DoubleSide });
+// Vật liệu DÙNG CHUNG cho cả phiên: tạo 1 lần, không dispose khi dựng lại nhà
+// (trước đây mỗi lần kéo slider lại tạo texture/mảtial mới → rò rỉ bộ nhớ GPU)
+const SHARED_MATS = new Set();
+function sharedMat(m) { m.userData.shared = true; SHARED_MATS.add(m); return m; }
+let wallMatShared = null;
+function wallMat() {
+  if (!wallMatShared) wallMatShared = sharedMat(new THREE.MeshLambertMaterial({ color: 0xf3f1ec }));
+  return wallMatShared;
+}
+// loại texture mái theo loại mái (tôn xanh lá / ngói đỏ terracotta)
+function roofKind(type) { return (type === "ton" || type === "hai_doc_bang") ? "ton" : "ngoi"; }
+const roofTexCache = {};
+const roofMatCache = {};
+function roofTexture(type) {
+  const kind = roofKind(type);
+  if (!roofTexCache[kind]) roofTexCache[kind] = kind === "ton" ? tonTex(1, 1) : ngoiTex(1, 1);
+  return roofTexCache[kind];
+}
+// texture chỉ tạo 1 lần; độ lặp thể hiện bằng UV của hình học (roofUV)
+function roofMat(type) {
+  const kind = roofKind(type);
+  if (!roofMatCache[kind]) {
+    roofMatCache[kind] = sharedMat(new THREE.MeshLambertMaterial({ map: roofTexture(kind), side: THREE.DoubleSide }));
+  }
+  return roofMatCache[kind];
+}
+// hệ số UV để 1 ô texture ≈ 1 m (ngói nhân 1.4 cho mịn hơn, giữ đúng như bản cũ)
+function roofUV(type, uLen, vLen) {
+  const k = roofKind(type) === "ton" ? 1 : 1.4;
+  return [uLen * k, vLen * k];
+}
+// dọn tài nguyên GPU của 1 nhánh scene (bỏ qua vật liệu dùng chung)
+function disposeTree(root) {
+  if (!root) return;
+  root.traverse(o => {
+    if (o.geometry && o.geometry.dispose) o.geometry.dispose();
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of mats) {
+      if (!m || m.userData?.shared) continue;
+      if (m.map && m.map.dispose) m.map.dispose();
+      if (m.dispose) m.dispose();
+    }
+  });
 }
 // Mặt tấm pin LONGi Hi-MO 7 LR7-72HGD 620M: 144 nửa cell (6 cột × 24 hàng), viền nhôm
 // rot90=false: mặt X = cạnh ngắn (1134), Y = cạnh dài (2382) — dùng cho tấm đặt dọc
@@ -387,13 +459,15 @@ const PANEL_FACE_NGANG = new THREE.MeshLambertMaterial({ map: panelFaceTexture(t
 const PANEL_FRAME = new THREE.MeshLambertMaterial({ color: 0xd9dde2 });
 const RACK_MAT = new THREE.MeshLambertMaterial({ color: 0x8d949c });
 const BALLAST_MAT = new THREE.MeshLambertMaterial({ color: 0xc9ced3 });
+for (const m of [PANEL_FACE_DOC, PANEL_FACE_NGANG, PANEL_FRAME, RACK_MAT, BALLAST_MAT]) m.userData.shared = true;
 
 /* ============================== Dựng nhà & mái ============================== */
-function quadGeometry(corners) {
+// uvU/uvV: số lần lặp texture theo 2 chiều (dùng UV thay cho texture.repeat để chia sẻ 1 texture)
+function quadGeometry(corners, uvU = 1, uvV = 1) {
   // corners: [A,B,C,D] theo thứ tự viền; tam giác A,B,C + A,C,D
   const [A, B, C, D] = corners.map(p => new THREE.Vector3(...p));
   const pos = [...A, ...B, ...C, ...A, ...C, ...D];
-  const uv = [0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1];
+  const uv = [0, uvV, 0, 0, uvU, 0, 0, uvV, uvU, 0, uvU, uvV];
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
@@ -401,10 +475,10 @@ function quadGeometry(corners) {
   return geo;
 }
 // Tam giác có UV (p1,p2 đáy; p3 đỉnh) — dùng bịt đầu hông mái có texture
-function triGeometry(p1, p2, p3) {
+function triGeometry(p1, p2, p3, uvU = 1, uvV = 1) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute([...p1, ...p2, ...p3], 3));
-  geo.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0.5, 1], 2));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, uvU, 0, uvU / 2, uvV], 2));
   geo.computeVertexNormals();
   return geo;
 }
@@ -427,7 +501,7 @@ function gableSlopes(W, L, wallH, ridgeRise, over, ridgePct) {
     const topX = xr, eaveX = side < 0 ? -W / 2 - over : W / 2 + over;
     const rA = [topX, ridgeH, z0], rB = [topX, ridgeH, z1];
     const eB = [eaveX, yEave, z1], eA = [eaveX, yEave, z0];
-    const mesh = new THREE.Mesh(quadGeometry([rA, rB, eB, eA]), roofMat(state.roofType, uLen, vLen));
+    const mesh = new THREE.Mesh(quadGeometry([rA, rB, eB, eA], ...roofUV(state.roofType, uLen, vLen)), roofMat(state.roofType));
     mesh.castShadow = mesh.receiveShadow = true;
     res.slopes.push({
       key: side > 0 ? "phai" : "trai", label: side > 0 ? "Mái phải" : "Mái trái",
@@ -458,7 +532,7 @@ function hipSlopes(W, L, wallH, ridgeRise, over) {
   for (const side of [1, -1]) {
     const ridgeA = [0, ridgeH, -zr], ridgeB = [0, ridgeH, zr];
     const eaveB = [side * run, yEave, z1], eaveA = [side * run, yEave, z0];
-    const mesh = new THREE.Mesh(quadGeometry([ridgeA, ridgeB, eaveB, eaveA]), roofMat(state.roofType, uLen, vLen));
+    const mesh = new THREE.Mesh(quadGeometry([ridgeA, ridgeB, eaveB, eaveA], ...roofUV(state.roofType, uLen, vLen)), roofMat(state.roofType));
     mesh.castShadow = mesh.receiveShadow = true;
     const origin = new THREE.Vector3(side * run / 2, (ridgeH + yEave) / 2, 0);
     const u = new THREE.Vector3(0, 0, 1);
@@ -474,8 +548,8 @@ function hipSlopes(W, L, wallH, ridgeRise, over) {
   // bịt 2 tam giác đầu hông (trước/sau), ăn cùng texture mái
   for (const zz of [z1, z0]) {
     const tri = new THREE.Mesh(
-      triGeometry([-run, yEave, zz], [run, yEave, zz], [0, ridgeH, Math.sign(zz) * zr]),
-      roofMat(state.roofType, 2 * run, vLen)
+      triGeometry([-run, yEave, zz], [run, yEave, zz], [0, ridgeH, Math.sign(zz) * zr], ...roofUV(state.roofType, 2 * run, vLen)),
+      roofMat(state.roofType)
     );
     tri.castShadow = tri.receiveShadow = true;
     extras.push(tri);
@@ -529,7 +603,7 @@ function truncatedGable(W, L, wallH, angleDeg, midPct, ridgePct, over) {
     const vLen = Math.hypot(run, rise);
     const rA = [sd.topX, topY, z0], rB = [sd.topX, topY, z1];
     const eB = [sd.eaveX, yEave, z1], eA = [sd.eaveX, yEave, z0];
-    const mesh = new THREE.Mesh(quadGeometry([rA, rB, eB, eA]), roofMat(state.roofType, uLen, vLen));
+    const mesh = new THREE.Mesh(quadGeometry([rA, rB, eB, eA], ...roofUV(state.roofType, uLen, vLen)), roofMat(state.roofType));
     mesh.castShadow = mesh.receiveShadow = true;
     res.slopes.push({
       key: sd.side > 0 ? "phai" : "trai", label: sd.side > 0 ? "Mái phải" : "Mái trái",
@@ -569,7 +643,7 @@ function triCap(p1, p2, apex) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute([...p1, ...p2, ...apex], 3));
   geo.computeVertexNormals();
-  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0xf3f1ec, side: THREE.DoubleSide }));
+  const m = new THREE.Mesh(geo, wallMat());
   m.castShadow = true;
   return m;
 }
@@ -640,7 +714,8 @@ function buildCompass() {
   scene.add(compassMesh);
 }
 function buildHouse() {
-  // xoá nội dung cũ
+  // xoá nội dung cũ — dispose geometry/texture trước để không rò rỉ bộ nhớ GPU
+  disposeTree(houseGroup);
   houseGroup.clear();
   slabMesh = null;
   houseApex = null;
@@ -695,7 +770,7 @@ function buildHouse() {
   const validKeys = new Set(slopes.map(s => s.key));
   for (const st of state.strings) {
     if (!validKeys.has(st.slopeKey)) {
-      if (st.group) houseGroup.remove(st.group);
+      if (st.group) { disposeTree(st.group); houseGroup.remove(st.group); }
       st.group = null;
     }
   }
@@ -803,7 +878,7 @@ function layoutSlots(count, dir, slope) {
   const { pL, pW } = panelDims();
   const fV = dir === "doc" ? pL : pW;  // kích thước theo hướng dốc
   const fU = dir === "doc" ? pW : pL;  // kích thước ngang đỉnh
-  const gap = 0.02, margin = 0.22;
+  const gap = 0.02, margin = state.edgeMargin;
   const pitchU = fU + gap, pitchV = fV + gap;
   // chuỗi phải nằm gọn trong mái: giới hạn cả số hàng (theo dốc) lẫn số cột (theo đỉnh)
   const maxRows = Math.max(1, Math.floor((slope.vLen - 2 * margin + gap) / (fV + gap)));
@@ -854,52 +929,76 @@ function layoutSlots(count, dir, slope) {
 }
 function slopeByKey(key) { return slopes.find(s => s.key === key) || null; }
 /* ---------------- Kiểm tra sức chứa / chỗ trống trên mái ---------------- */
+// nửa kích thước khung bao của khối tấm khi XOAY `rot` độ trong mặt mái
+// (khối w×h xoay θ thì khung bao là w|cosθ|+h|sinθ| × w|sinθ|+h|cosθ|)
+function rotExtents(lay, rot) {
+  const th = THREE.MathUtils.degToRad(rot || 0);
+  const c = Math.abs(Math.cos(th)), s = Math.abs(Math.sin(th));
+  return {
+    hu: lay.totalU / 2 * c + lay.totalV / 2 * s,
+    hv: lay.totalU / 2 * s + lay.totalV / 2 * c,
+  };
+}
 // khung bao của 1 chuỗi ĐÃ đặt (trong hệ toạ độ mặt mái) để kiểm tra chồng lấn
 // nửa khe hở 0.01 m mỗi bên (khe thật giữa 2 tấm là 0.02) → 2 chuỗi sát nhau vẫn được coi là không đè
 function stringFootprint(slope, str) {
   const lay = layoutSlots(str.count, str.dir, slope);
-  const half = 0.01;
-  if ((str.rot % 180) === 0) {
-    return { cx: str.cx, cy: str.cy, hu: lay.totalU / 2 + half, hv: lay.totalV / 2 + half };
-  }
-  const rad = Math.hypot(lay.totalU, lay.totalV) / 2 + half; // chuỗi đã xoay: lấy bán kính ngoại tiếp cho an toàn
-  return { cx: str.cx, cy: str.cy, hu: rad, hv: rad };
+  const e = rotExtents(lay, str.rot);
+  return { cx: str.cx, cy: str.cy, hu: e.hu + 0.01, hv: e.hv + 0.01 };
 }
 function otherFootprints(slope, exceptId) {
   return state.strings
     .filter(s => s.slopeKey === slope.key && s.id !== exceptId)
     .map(s => stringFootprint(slope, s));
 }
-// khối tấm `lay` đặt tại (cx,cy) có đè lên chuỗi khác không
-function collides(cx, cy, lay, fps) {
-  const hu = lay.totalU / 2 + 0.01, hv = lay.totalV / 2 + 0.01;
+// khối tấm `lay` (xoay `rot`) đặt tại (cx,cy) có đè lên chuỗi khác không
+function collides(cx, cy, lay, fps, rot = 0) {
+  const e = rotExtents(lay, rot);
+  const hu = e.hu + 0.01, hv = e.hv + 0.01;
   return fps.some(f => Math.abs(cx - f.cx) < f.hu + hu - 1e-6 && Math.abs(cy - f.cy) < f.hv + hv - 1e-6);
 }
-// khối tấm có nằm gọn trong mặt mái không (mái Nhật: xét bề rộng tại đúng hàng của tấm)
-function insideRoof(slope, cx, cy, lay) {
-  const margin = 0.22;
-  if (lay.totalU > slope.uLen - 2 * margin + 1e-6) return false;
-  if (lay.totalV > slope.vLen - 2 * margin + 1e-6) return false;
+// 1 điểm (x,y) trong hệ mặt mái có nằm trong mái không (mái Nhật hẹp dần lên đỉnh)
+function pointInRoof(slope, x, y, margin) {
+  if (Math.abs(y) > slope.vLen / 2 - margin + 1e-6) return false;
   const tapered = 2 * slope.uHalfAt(slope.vLen / 2) < slope.uLen - 0.01;
-  if (!tapered) {
-    return Math.abs(cx) + lay.totalU / 2 <= slope.uLen / 2 - margin + 1e-6
-        && Math.abs(cy) + lay.totalV / 2 <= slope.vLen / 2 - margin + 1e-6;
+  const halfU = tapered ? slope.uHalfAt(y) - margin : slope.uLen / 2 - margin;
+  return Math.abs(x) <= halfU + 1e-6;
+}
+// khối tấm có nằm gọn trong mặt mái không (mái Nhật: xét bề rộng tại đúng hàng của tấm)
+// rot = 0 → kiểm tra từng hàng (chính xác với mái hình thang); rot ≠ 0 → khung bao xoay, xét 4 góc
+function insideRoof(slope, cx, cy, lay, rot = 0) {
+  const margin = state.edgeMargin;
+  if ((rot % 180) === 0) {
+    if (lay.totalU > slope.uLen - 2 * margin + 1e-6) return false;
+    if (lay.totalV > slope.vLen - 2 * margin + 1e-6) return false;
+    const tapered = 2 * slope.uHalfAt(slope.vLen / 2) < slope.uLen - 0.01;
+    if (!tapered) {
+      return Math.abs(cx) + lay.totalU / 2 <= slope.uLen / 2 - margin + 1e-6
+          && Math.abs(cy) + lay.totalV / 2 <= slope.vLen / 2 - margin + 1e-6;
+    }
+    for (const s of lay.slots) {
+      const vTop = cy + s.y + s.fV / 2;
+      if (vTop > slope.vLen / 2 - margin + 1e-6) return false;
+      if (cy + s.y - s.fV / 2 < -slope.vLen / 2 + margin - 1e-6) return false;
+      if (Math.abs(cx + s.x) + s.fU / 2 > slope.uHalfAt(vTop) - margin + 1e-6) return false;
+    }
+    return true;
   }
-  for (const s of lay.slots) {
-    const vTop = cy + s.y + s.fV / 2;
-    if (vTop > slope.vLen / 2 - margin + 1e-6) return false;
-    if (cy + s.y - s.fV / 2 < -slope.vLen / 2 + margin - 1e-6) return false;
-    if (Math.abs(cx + s.x) + s.fU / 2 > slope.uHalfAt(vTop) - margin + 1e-6) return false;
+  // mái là đa giác lồi → khối chữ nhật xoay nằm trong mái khi và chỉ khi 4 góc khung bao nằm trong
+  const e = rotExtents(lay, rot);
+  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    if (!pointInRoof(slope, cx + sx * e.hu, cy + sy * e.hv, margin)) return false;
   }
   return true;
 }
 // tìm vị trí trống cho khối `lay` tấm: ưu tiên giữa mái rồi mới dạt ra (mái Nhật hẹp dần
 // lên đỉnh nên đặt lệch lên trên dễ tràn hông; quét từ giữa ra luôn chọn được chỗ rộng nhất)
-function findFreeSpot(slope, lay) {
-  const margin = 0.22, step = 0.08;
+function findFreeSpot(slope, lay, rot = 0) {
+  const margin = state.edgeMargin, step = 0.08;
   const fps = otherFootprints(slope, null);
-  const maxCx = slope.uLen / 2 - margin - lay.totalU / 2;
-  const maxCy = slope.vLen / 2 - margin - lay.totalV / 2;
+  const e = rotExtents(lay, rot);
+  const maxCx = slope.uLen / 2 - margin - e.hu;
+  const maxCy = slope.vLen / 2 - margin - e.hv;
   if (maxCx < -1e-9 || maxCy < -1e-9) return null;
   const nY = Math.floor(maxCy / step + 1e-9), nX = Math.floor(maxCx / step + 1e-9);
   for (let ky = 0; ky <= nY; ky++) {
@@ -907,7 +1006,7 @@ function findFreeSpot(slope, lay) {
     for (let k = 0; k <= nX; k++) {
       const cx = k * step;
       for (const [x, y] of [[cx, cy], [-cx, cy], [cx, -cy], [-cx, -cy]]) {
-        if (insideRoof(slope, x, y, lay) && !collides(x, y, lay, fps)) return { cx: x, cy: y };
+        if (insideRoof(slope, x, y, lay, rot) && !collides(x, y, lay, fps, rot)) return { cx: x, cy: y };
       }
     }
   }
@@ -1131,7 +1230,7 @@ function makeStringMesh(str) {
 }
 function rebuildStringGroups() {
   for (const s of state.strings) {
-    if (s.group) houseGroup.remove(s.group);
+    if (s.group) { disposeTree(s.group); houseGroup.remove(s.group); }
     s.group = makeStringMesh(s);
     if (s.group) houseGroup.add(s.group);
   }
@@ -1143,8 +1242,15 @@ function updateSelectionVisual() {
   }
 }
 // kẹp vị trí khối tấm vào trong mặt mái (dùng chung khi dựng, kéo-thả, đổi hướng)
-function clampSpot(slope, lay, cx, cy) {
-  const margin = 0.22;
+// rot ≠ 0: dùng khung bao xoay (mái coi như hình chữ nhật, insideRoof sẽ kiểm tra lại góc)
+function clampSpot(slope, lay, cx, cy, rot = 0) {
+  const margin = state.edgeMargin;
+  if ((rot % 180) !== 0) {
+    const e = rotExtents(lay, rot);
+    const halfU = Math.max(0, slope.uLen / 2 - margin - e.hu);
+    const halfV = Math.max(0, slope.vLen / 2 - margin - e.hv);
+    return { cx: THREE.MathUtils.clamp(cx, -halfU, halfU), cy: THREE.MathUtils.clamp(cy, -halfV, halfV) };
+  }
   const tapered = 2 * slope.uHalfAt(slope.vLen / 2) < slope.uLen - 0.01;
   if (!tapered) {
     const halfU = Math.max(0, slope.uLen / 2 - margin - lay.totalU / 2);
@@ -1171,7 +1277,7 @@ function clampString(str) {
   if (!slope) return;
   const lay = layoutSlots(str.count, str.dir, slope);
   if (!lay.slots.length) return;
-  const p = clampSpot(slope, lay, str.cx, str.cy);
+  const p = clampSpot(slope, lay, str.cx, str.cy, str.rot);
   str.cx = p.cx; str.cy = p.cy;
 }
 
@@ -1214,7 +1320,7 @@ function selectString(id) {
 function removeString(id) {
   const i = state.strings.findIndex(s => s.id === id);
   if (i >= 0) {
-    if (state.strings[i].group) houseGroup.remove(state.strings[i].group);
+    if (state.strings[i].group) { disposeTree(state.strings[i].group); houseGroup.remove(state.strings[i].group); }
     state.strings.splice(i, 1);
   }
   if (state.selectedId === id) state.selectedId = state.strings[0]?.id ?? null;
@@ -1297,10 +1403,11 @@ window.addEventListener("pointerup", () => {
     // kéo-thả: nhắc nếu chuỗi bị đè lên chuỗi khác (không chặn — người dùng tự quyết vị trí)
     if (d.str && d.slope) {
       const lay = layoutSlots(d.str.count, d.str.dir, d.slope);
-      if (collides(d.str.cx, d.str.cy, lay, otherFootprints(d.slope, d.str.id))) {
+      if (collides(d.str.cx, d.str.cy, lay, otherFootprints(d.slope, d.str.id), d.str.rot)) {
         notify(`Chuỗi ${d.str.id} đang đè lên chuỗi khác trên ${d.slope.label} — kéo lệch ra hoặc xoá bớt.`, "warn");
       }
     }
+    scheduleHistory();
   }
 });
 
@@ -1403,7 +1510,258 @@ function refreshAll() {
   renderSelField();
   renderSummary();
   renderSlopeOptions();
+  if (!applying) scheduleHistory();
 }
+
+/* ============================== Lưu · Chia sẻ · Undo · CSV ============================== */
+const LS_AUTO = "solar3d.autosave.v1";
+const LS_LIST = "solar3d.designs.v1";
+let applying = false;               // đang khôi phục → không ghi lịch sử
+let hist = [], histIdx = -1;        // lịch sử trạng thái (JSON)
+let histTimer = null;
+
+function clampNum(v, lo, hi, dflt) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
+}
+// gom trạng thái đang thiết kế (bỏ id tạm/group) để lưu, chia sẻ, undo
+function collectState() {
+  return {
+    v: 1,
+    roofType: state.roofType, houseW: state.houseW, houseL: state.houseL, mount: state.mount,
+    roofAngle: state.roofAngle, midFlatPct: state.midFlatPct, wallH: state.wallH, ridgePct: state.ridgePct,
+    houseAngle: state.houseAngle, hour: state.hour, edgeMargin: state.edgeMargin,
+    newCount: state.newCount, dirChoice: state.dirChoice, slopeKey: state.slopeKey,
+    strings: state.strings.map(s => ({
+      slopeKey: s.slopeKey, count: s.count, dir: s.dir, rot: s.rot,
+      cx: +s.cx.toFixed(3), cy: +s.cy.toFixed(3),
+    })),
+  };
+}
+// đổ trạng thái đã lưu vào app (chịu được dữ liệu cũ/thiếu trường)
+function applyState(d) {
+  if (!d || typeof d !== "object") return false;
+  const validKeys = new Set(["trai", "phai", "bang", "bang-giua"]);
+  state.roofType = ROOF_TYPES.some(t => t.v === d.roofType) ? d.roofType : "ton";
+  state.houseW = clampNum(d.houseW, 4, 30, 9);
+  state.houseL = clampNum(d.houseL, 4, 30, 11);
+  state.mount = d.mount === "khungsat" ? "khungsat" : "apmai";
+  state.roofAngle = clampNum(d.roofAngle, 10, 45, 26);
+  state.midFlatPct = clampNum(d.midFlatPct, 10, 70, 40);
+  state.wallH = clampNum(d.wallH, 2.6, 4.5, 3);
+  state.ridgePct = clampNum(d.ridgePct, 20, 80, 50);
+  state.houseAngle = clampNum(d.houseAngle, 0, 360, 0);
+  state.hour = clampNum(d.hour, 6, 18, 12);
+  state.edgeMargin = clampNum(d.edgeMargin, 0.1, 0.6, 0.22);
+  state.newCount = Math.round(clampNum(d.newCount, 1, 60, 9));
+  state.dirChoice = d.dirChoice === "ngang" ? "ngang" : "doc";
+  state.slopeKey = validKeys.has(d.slopeKey) ? d.slopeKey : null;
+  state.strings = (Array.isArray(d.strings) ? d.strings : [])
+    .filter(s => s && validKeys.has(s.slopeKey))
+    .map((s, i) => ({
+      id: i + 1, slopeKey: s.slopeKey,
+      count: Math.round(clampNum(s.count, 1, 60, 1)),
+      dir: s.dir === "ngang" ? "ngang" : "doc",
+      rot: Math.round(clampNum(s.rot, 0, 350, 0)) % 360,
+      cx: clampNum(s.cx, -60, 60, 0), cy: clampNum(s.cy, -60, 60, 0), group: null,
+    }));
+  state.nextId = state.strings.length + 1;
+  state.selectedId = state.strings[0]?.id ?? null;
+  syncUIFromState();
+  return true;
+}
+// đồng bộ toàn bộ control trong panel theo state (dùng sau khi khôi phục/undo)
+function syncUIFromState() {
+  $("houseW").value = state.houseW; $("wLabel").textContent = state.houseW + " m";
+  $("houseL").value = state.houseL; $("lLabel").textContent = state.houseL + " m";
+  $("roofAngleRange").value = state.roofAngle; $("roofAngleVal").textContent = state.roofAngle + "°";
+  $("midFlatRange").value = state.midFlatPct; $("midFlatVal").textContent = state.midFlatPct + "%";
+  $("ridgePctRange").value = state.ridgePct; $("ridgePctVal").textContent = state.ridgePct + " : " + (100 - state.ridgePct);
+  $("wallHRange").value = state.wallH; $("wallHVal").textContent = state.wallH.toFixed(1) + " m";
+  $("edgeRange").value = state.edgeMargin; $("edgeVal").textContent = state.edgeMargin.toFixed(2) + " m";
+  $("angleRange").value = state.houseAngle; $("angleVal").textContent = state.houseAngle + "°";
+  $("hourRange").value = state.hour; $("hourVal").textContent = hourLabel(state.hour);
+  $("countInput").value = state.newCount;
+  document.querySelectorAll("#mountOptions .opt").forEach(x => x.classList.toggle("active", x.dataset.v === state.mount));
+  houseGroup.rotation.y = THREE.MathUtils.degToRad(state.houseAngle);
+  updateSun();
+  renderRoofOptions();
+  updateCustomFields();
+  buildHouse();
+  refreshAll();
+}
+// ---- lịch sử undo/redo ----
+function recordHistory() {
+  const key = JSON.stringify(collectState());
+  if (histIdx >= 0 && hist[histIdx] === key) return;
+  hist = hist.slice(0, histIdx + 1);
+  hist.push(key);
+  if (hist.length > 80) hist.shift();
+  histIdx = hist.length - 1;
+  updateIoButtons();
+}
+function scheduleHistory() {
+  if (applying) return;
+  clearTimeout(histTimer);
+  histTimer = setTimeout(() => { recordHistory(); saveAuto(); }, 400);
+}
+function applySnapshot(json) {
+  applying = true;
+  try { applyState(JSON.parse(json)); } finally { applying = false; }
+  saveAuto();
+  updateIoButtons();
+}
+function undo() {
+  if (histIdx <= 0) { notify("Không còn thao tác để hoàn tác.", "warn"); return; }
+  histIdx--;
+  applySnapshot(hist[histIdx]);
+}
+function redo() {
+  if (histIdx >= hist.length - 1) { notify("Không còn thao tác để làm lại.", "warn"); return; }
+  histIdx++;
+  applySnapshot(hist[histIdx]);
+}
+function updateIoButtons() {
+  if (!$("undoBtn")) return;
+  $("undoBtn").disabled = histIdx <= 0;
+  $("redoBtn").disabled = histIdx >= hist.length - 1;
+}
+// ---- lưu tự động + bản lưu có tên ----
+function saveAuto() {
+  try { localStorage.setItem(LS_AUTO, JSON.stringify(collectState())); } catch {}
+}
+function readDesigns() {
+  try { const a = JSON.parse(localStorage.getItem(LS_LIST) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+function writeDesigns(list) {
+  try { localStorage.setItem(LS_LIST, JSON.stringify(list.slice(0, 30))); } catch {}
+}
+function renderDesigns(selectedIndex) {
+  const sel = $("designSelect");
+  if (!sel) return;
+  const list = readDesigns();
+  sel.innerHTML = "";
+  if (!list.length) {
+    const o = document.createElement("option");
+    o.value = ""; o.textContent = "(chưa có bản lưu nào)";
+    sel.appendChild(o);
+    return;
+  }
+  list.forEach((d, i) => {
+    const o = document.createElement("option");
+    o.value = String(i);
+    const t = new Date(d.ts || Date.now());
+    const stamp = `${String(t.getDate()).padStart(2, "0")}/${String(t.getMonth() + 1).padStart(2, "0")} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+    o.textContent = `${d.name || "Thiết kế"} — ${stamp}`;
+    sel.appendChild(o);
+  });
+  if (selectedIndex != null) sel.value = String(selectedIndex);
+}
+function saveDesign() {
+  const list = readDesigns();
+  const nPanels = state.strings.reduce((a, s) => a + placedPanels(s), 0);
+  const name = ($("designName").value || "").trim() ||
+    `Thiết kế ${nPanels} tấm · ${fmtKw(kwOf(nPanels))} kWp`;
+  list.unshift({ name, ts: Date.now(), data: collectState() });
+  writeDesigns(list);
+  $("designName").value = "";
+  renderDesigns(0);
+  notify(`Đã lưu "${name}".`, "ok");
+}
+function loadDesign() {
+  const list = readDesigns();
+  const i = parseInt($("designSelect").value, 10);
+  const d = list[i];
+  if (!d) { notify("Chưa chọn bản lưu nào.", "warn"); return; }
+  applying = true;
+  try { applyState(d.data); } finally { applying = false; }
+  recordHistory();
+  saveAuto();
+  notify(`Đã mở "${d.name}".`, "ok");
+}
+function deleteDesign() {
+  const list = readDesigns();
+  const i = parseInt($("designSelect").value, 10);
+  if (!Number.isInteger(i) || !list[i]) { notify("Chưa chọn bản lưu nào.", "warn"); return; }
+  const name = list[i].name || "Thiết kế";
+  list.splice(i, 1);
+  writeDesigns(list);
+  renderDesigns(0);
+  notify(`Đã xoá bản lưu "${name}".`, "info");
+}
+// ---- chia sẻ bằng link ----
+function shareURL() {
+  return location.origin + location.pathname + "#d=" + encodeURIComponent(JSON.stringify(collectState()));
+}
+async function copyShareLink() {
+  const url = shareURL();
+  try { history.replaceState(null, "", "#d=" + encodeURIComponent(JSON.stringify(collectState()))); } catch {}
+  try {
+    await navigator.clipboard.writeText(url);
+    notify("Đã copy link chia sẻ — dán vào Zalo/tin nhắn để gửi khách.", "ok");
+  } catch {
+    notify("Trình duyệt không cho copy tự động. Link đã hiện trên thanh địa chỉ — copy tại đó.", "info");
+  }
+}
+// ---- xuất CSV cho báo giá ----
+function exportCSV() {
+  const rows = [];
+  const push = arr => rows.push(arr.map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
+  const total = state.strings.reduce((a, s) => a + placedPanels(s), 0);
+  push(["THIẾT KẾ HỆ ĐIỆN MẶT TRỜI"]);
+  push(["Ngày xuất", new Date().toLocaleString("vi-VN")]);
+  push(["Loại mái", ROOF_TYPES.find(t => t.v === state.roofType)?.label || ""]);
+  push(["Kích thước nhà (m)", `${state.houseW} × ${state.houseL}`]);
+  push(["Cách lắp", state.mount === "khungsat" ? "Có khung sắt" : "Áp mái"]);
+  push(["Hướng nhà (độ)", state.houseAngle]);
+  push(["Khoảng cách mép mái (m)", state.edgeMargin]);
+  push([]);
+  push(["Chuỗi", "Mái", "Số tấm", "Hướng tấm", "Xoay (độ)", "Công suất (kWp)"]);
+  for (const s of state.strings) {
+    const n = placedPanels(s);
+    push([s.id, slopeByKey(s.slopeKey)?.label || "", n, s.dir === "doc" ? "Dọc" : "Ngang", s.rot, fmtKw(kwOf(n))]);
+  }
+  push([]);
+  push(["Tổng cộng", `${state.strings.length} chuỗi`, `${total} tấm`, `${fmtKw(kwOf(total))} kWp`]);
+  push(["Sản lượng dự kiến", `${Math.round(kwOf(total) * YIELD_KWH_PER_KWP_DAY * 30)} kWh/tháng`]);
+  const csv = "\uFEFF" + rows.join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "so-lieu-he-dien-mat-troi.csv";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  notify("Đã xuất CSV — mở bằng Excel để dán vào báo giá.", "ok");
+}
+$("undoBtn").onclick = undo;
+$("redoBtn").onclick = redo;
+$("shareBtn").onclick = copyShareLink;
+$("saveDesignBtn").onclick = saveDesign;
+$("loadDesignBtn").onclick = loadDesign;
+$("delDesignBtn").onclick = deleteDesign;
+$("exportBtn").onclick = exportCSV;
+// phím tắt: Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y hoàn tác-làm lại, Delete xoá chuỗi đang chọn
+window.addEventListener("keydown", (e) => {
+  const tag = (e.target?.tagName || "").toLowerCase();
+  const typing = tag === "input" || tag === "textarea" || tag === "select" || e.target?.isContentEditable;
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && e.key.toLowerCase() === "z") {
+    if (typing) return;
+    e.preventDefault();
+    e.shiftKey ? redo() : undo();
+    return;
+  }
+  if (mod && e.key.toLowerCase() === "y") {
+    if (typing) return;
+    e.preventDefault();
+    redo();
+    return;
+  }
+  if ((e.key === "Delete" || e.key === "Backspace") && !typing && state.selectedId != null) {
+    e.preventDefault();
+    removeString(state.selectedId);
+  }
+});
 
 // loại mái
 renderRoofOptions();
@@ -1433,12 +1791,20 @@ $("wallHRange").addEventListener("input", () => {
   $("wallHVal").textContent = state.wallH.toFixed(1) + " m";
   buildHouse(); refreshAll();
 });
+// khoảng cách chừa từ mép mái (thay hằng số 0.22 cũ) — đổi là sức chứa mái đổi theo
+$("edgeRange").addEventListener("input", () => {
+  state.edgeMargin = parseFloat($("edgeRange").value);
+  $("edgeVal").textContent = state.edgeMargin.toFixed(2) + " m";
+  buildHouse(); refreshAll();
+});
 // cách lắp
 document.querySelectorAll("#mountOptions .opt").forEach(o => {
   o.onclick = () => {
     state.mount = o.dataset.v;
     document.querySelectorAll("#mountOptions .opt").forEach(x => x.classList.toggle("active", x === o));
     rebuildStringGroups();
+    renderSummary();
+    scheduleHistory();
   };
 });
 // hướng tấm của chuỗi đang chọn
@@ -1465,7 +1831,7 @@ document.querySelectorAll("#dirOptions .opt").forEach(o => {
     }
     str.cx = p.cx; str.cy = p.cy;
     const g = makeStringMesh(str);
-    if (g) { houseGroup.remove(str.group); str.group = g; houseGroup.add(g); }
+    if (g) { disposeTree(str.group); houseGroup.remove(str.group); str.group = g; houseGroup.add(g); }
     refreshAll();
   };
 });
@@ -1514,7 +1880,7 @@ $("autoBtn").onclick = () => {
   }
 };
 $("clearBtn").onclick = () => {
-  for (const s of state.strings) if (s.group) houseGroup.remove(s.group);
+  for (const s of state.strings) if (s.group) { disposeTree(s.group); houseGroup.remove(s.group); }
   state.strings = []; state.selectedId = null;
   refreshAll();
 };
@@ -1522,12 +1888,42 @@ $("delBtn").onclick = () => { if (state.selectedId != null) removeString(state.s
 $("rotRange").addEventListener("input", () => {
   const str = state.strings.find(s => s.id === state.selectedId);
   if (!str) return;
-  str.rot = parseInt($("rotRange").value, 10);
-  $("rotLabel").textContent = str.rot + "°";
-  const g = makeStringMesh(str);
-  if (g) { houseGroup.remove(str.group); str.group = g; houseGroup.add(g); }
-  clampString(str);
-  str.group.position.copy(stringOrigin(slopeByKey(str.slopeKey), str.cx, str.cy));
+  const slope = slopeByKey(str.slopeKey);
+  if (!slope) return;
+  const deg = parseInt($("rotRange").value, 10);
+  const prev = str.rot;
+  if (deg === prev) return;
+  const lay = layoutSlots(str.count, str.dir, slope);
+  // xoay làm khung bao nở ra: kiểm tra vừa mái + không đè chuỗi khác, không vừa thì giữ góc cũ
+  str.rot = deg;
+  const apply = () => {
+    $("rotLabel").textContent = deg + "°";
+    const g = makeStringMesh(str);
+    if (g) { disposeTree(str.group); houseGroup.remove(str.group); str.group = g; houseGroup.add(g); }
+    str.group.position.copy(stringOrigin(slope, str.cx, str.cy));
+    renderSummary();
+    scheduleHistory();
+  };
+  const p = clampSpot(slope, lay, str.cx, str.cy, deg);
+  const fps = otherFootprints(slope, str.id);
+  if (insideRoof(slope, p.cx, p.cy, lay, deg) && !collides(p.cx, p.cy, lay, fps, deg)) {
+    str.cx = p.cx; str.cy = p.cy;
+    apply();
+    return;
+  }
+  // chỗ hiện tại không vừa → thử tìm chỗ khác cho đúng góc xoay này
+  const spot = findFreeSpot(slope, lay, deg);
+  if (spot) {
+    str.cx = spot.cx; str.cy = spot.cy;
+    apply();
+    notify(`Đã dời chuỗi ${str.id} để đủ chỗ cho góc xoay ${deg}°.`, "info");
+    return;
+  }
+  str.rot = prev;
+  $("rotRange").value = prev;
+  $("rotLabel").textContent = prev + "°";
+  const e = rotExtents(lay, deg);
+  notify(`Xoay ${deg}° không vừa ${slope.label}: cần ${(e.hv * 2).toFixed(2)} m chiều sâu, mái còn ${(slope.vLen - 2 * state.edgeMargin).toFixed(2)} m — giữ ${prev}°.`, "warn");
 });
 // hướng nhà
 $("angleRange").addEventListener("input", () => {
@@ -1647,7 +2043,7 @@ $("saveBtn").onclick = () => {
 };
 // reset
 $("resetBtn").onclick = () => {
-  for (const s of state.strings) if (s.group) houseGroup.remove(s.group);
+  for (const s of state.strings) if (s.group) { disposeTree(s.group); houseGroup.remove(s.group); }
   Object.assign(state, DEFAULTS, { strings: [], selectedId: null, nextId: 1 });
   $("houseW").value = 9; $("houseL").value = 11;
   $("countInput").value = 9;
@@ -1684,14 +2080,45 @@ resize();
 buildHouse();
 refreshAll();
 updateCustomFields();
+/* khôi phục phiên làm việc: ưu tiên link chia sẻ (#d=...) rồi tới bản tự động lưu */
+(function boot() {
+  let restored = false;
+  const m = location.hash.match(/^#d=(.+)$/);
+  if (m) {
+    try {
+      applying = true;
+      if (applyState(JSON.parse(decodeURIComponent(m[1])))) restored = true;
+    } catch (err) { console.warn("Link chia sẻ không hợp lệ", err); }
+    applying = false;
+    if (restored) notify("Đã mở thiết kế từ link chia sẻ.", "ok");
+  }
+  if (!restored) {
+    try {
+      const raw = localStorage.getItem(LS_AUTO);
+      if (raw) {
+        applying = true;
+        const ok = applyState(JSON.parse(raw));
+        applying = false;
+        if (ok) { restored = true; notify("Đã khôi phục thiết kế lần trước (tự động lưu).", "info"); }
+      }
+    } catch {}
+  }
+  recordHistory();
+  renderDesigns();
+  updateIoButtons();
+  saveAuto();
+})();
 renderer.setAnimationLoop(() => {
   controls.update();
   renderer.render(scene, camera);
 });
 // debug: xem nhanh trạng thái từ console + kiểm tra sức chứa mái
 window.__solar = {
-  state, getSlopes: () => slopes, THREE,
+  state, getSlopes: () => slopes, THREE, renderer, scene,
   layoutSlots, placedPanels, roofCapacity, roofUsed, planPlacement, repackSlope, addString, notify,
+  collectState, applyState, undo, redo, exportCSV, shareURL,
+  getHistory: () => ({ hist, histIdx }),
+  textures: () => renderer.info.memory,
 };
 </script>
 </body>
