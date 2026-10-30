@@ -64,21 +64,44 @@
   .reset-btn { margin-top: 10px; width: 100%; padding: 12px; font-size: 14px; font-weight: 600; color: #36424e; background: #eef1f4; border: 1.5px solid #d6dbe0; border-radius: 8px; cursor: pointer; }
   .reset-btn:hover { background: #e0e5ea; }
   .hint { position: absolute; bottom: 12px; left: 12px; background: #1b2733b3; color: #fff; font-size: 12px; padding: 6px 12px; border-radius: 6px; pointer-events: none; max-width: calc(100% - 24px); }
-  .house-dir-overlay { position: absolute; top: 12px; left: 12px; right: 12px; max-width: 420px; margin: 0 auto; background: #ffffffeb; border: 1px solid #e0e3e7; border-radius: 12px; padding: 10px 14px; box-shadow: 0 2px 10px #0000001f; z-index: 15; backdrop-filter: blur(4px); }
+  .house-dir-overlay { position: absolute; top: 12px; left: 12px; right: 12px; max-width: 420px; margin: 0 auto; background: #ffffffeb; border: 1px solid #e0e3e7; border-radius: 12px; padding: 10px 14px; box-shadow: 0 2px 10px #0000001f; z-index: 15; backdrop-filter: blur(4px); transition: all .2s ease; }
+  .house-dir-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .overlay-toggle-btn { background: #fff; border: 1px solid #d6dbe0; font-size: 11px; font-weight: 600; color: #6b7785; cursor: pointer; padding: 3px 8px; border-radius: 6px; transition: all .15s ease; white-space: nowrap; }
+  .overlay-toggle-btn:hover { background: #edf2f7; color: #1b2733; border-color: #9db4cc; }
+  .house-dir-overlay.collapsed .overlay-collapsible { display: none; }
+  .house-dir-overlay.collapsed { padding-bottom: 8px; max-width: 280px; }
   .house-dir-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
   .house-dir-label { font-size: 13px; color: #36424e; }
   .house-dir-label b { color: #1473e6; }
+  .dir-presets-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
+  .dir-btn { padding: 6px 2px; font-size: 11px; font-weight: 600; border: 1px solid #d6dbe0; border-radius: 6px; background: #fff; color: #36424e; cursor: pointer; transition: all .15s ease; white-space: nowrap; text-align: center; }
+  .dir-btn:hover { background: #f0f7ff; border-color: #1473e6; color: #1473e6; }
+  .dir-btn.active { background: #1473e6; border-color: #1473e6; color: #fff; font-weight: 700; box-shadow: 0 1px 4px #1473e640; }
   .settings-fab { display: none; position: absolute; right: 16px; bottom: 16px; width: 56px; height: 56px; border-radius: 50%; border: none; background: #1473e6; color: #fff; font-size: 24px; cursor: pointer; box-shadow: 0 4px 14px #00000040; z-index: 20; align-items: center; justify-content: center; }
   .panel-close { display: none; position: absolute; top: 10px; right: 12px; width: 36px; height: 36px; border-radius: 50%; border: 1px solid #e0e3e7; background: #fff; color: #36424e; font-size: 20px; line-height: 1; cursor: pointer; z-index: 5; }
   .panel-backdrop { display: none; }
+  .sheet-handle { display: none; width: 44px; height: 5px; background: #cbd5e1; border-radius: 999px; margin: -14px auto 14px; }
+  .portal-link-card { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 16px; border-radius: 10px; background: linear-gradient(135deg, #fff5f5, #fff); border: 1.5px solid #fecaca; text-decoration: none; transition: all .2s ease; box-shadow: 0 1px 4px #ee003314; }
+  .portal-link-card:hover { border-color: #ee0033; background: #fff0f0; transform: translateY(-1px); box-shadow: 0 3px 8px #ee003324; }
+  .portal-link-icon { font-size: 20px; line-height: 1; flex-shrink: 0; background: #fee2e2; width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .portal-link-content { flex: 1; min-width: 0; }
+  .portal-link-title { font-size: 12px; font-weight: 800; color: #dc2626; letter-spacing: -0.2px; display: flex; align-items: center; gap: 4px; }
+  .portal-link-desc { font-size: 11px; color: #64748b; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vcc-btn { background: linear-gradient(135deg, #ee0033, #c9002b) !important; color: #fff !important; margin-top: 10px; text-decoration: none; display: block; text-align: center; box-shadow: 0 2px 8px #ee00333d; border: none !important; }
+  .vcc-btn:hover { background: linear-gradient(135deg, #d6002e, #a80024) !important; color: #fff !important; }
   @media (max-width: 760px) {
     .canvas-wrap { position: absolute; top: 0; right: 0; bottom: 0; left: 0; height: 100%; width: 100%; }
     .settings-fab { display: flex; }
-    .panel { position: fixed; left: 0; right: 0; bottom: 0; width: 100%; max-height: 82%; border-left: none; border-top: 1px solid #e6e8eb; border-radius: 16px 16px 0 0; box-shadow: 0 -6px 24px #0000002e; transform: translateY(110%); transition: transform .28s ease; z-index: 30; padding-top: 28px; }
+    .sheet-handle { display: block; }
+    .panel { position: fixed; left: 0; right: 0; bottom: 0; width: 100%; max-height: 85%; border-left: none; border-top: 1px solid #e6e8eb; border-radius: 16px 16px 0 0; box-shadow: 0 -6px 24px #0000002e; transform: translateY(110%); transition: transform .28s ease; z-index: 30; padding-top: 24px; }
     .app.panel-open .panel { transform: translateY(0); }
     .app.panel-open .panel-backdrop { display: block; position: fixed; inset: 0; z-index: 25; }
     .app.panel-open .settings-fab { display: none; }
     .panel-close { display: block; }
+    .house-dir-overlay { top: 8px; left: 8px; right: 8px; padding: 8px 10px; max-width: calc(100% - 16px); }
+    .dir-presets-row { gap: 3px; }
+    .dir-btn { font-size: 10px; padding: 6px 1px; }
+    .cam-btn { font-size: 10px; padding: 6px 2px; }
   }
   .cam-btn { flex: 1; padding: 6px 4px; font-size: 11px; font-weight: 600; border: 1px solid #d6dbe0; border-radius: 6px; background: #fff; color: #36424e; cursor: pointer; transition: all .15s ease; white-space: nowrap; text-align: center; }
   .cam-btn:hover { background: #f0f7ff; border-color: #1473e6; color: #1473e6; }
@@ -107,7 +130,6 @@
     }
     .app { display: none !important; }
   }
-  }
 </style>
 <script type="importmap">
 {
@@ -122,19 +144,31 @@
 <div id="root">
   <div class="app" id="app">
     <div class="canvas-wrap" id="canvasWrap">
-      <div class="house-dir-overlay">
-        <div class="house-dir-row">
-          <span class="house-dir-label">🧭 Hướng nhà <b id="angleVal">0°</b></span>
+      <div class="house-dir-overlay" id="houseDirOverlay">
+        <div class="house-dir-header">
+          <div class="house-dir-row" style="margin-bottom:0">
+            <span class="house-dir-label">🧭 Hướng nhà <b id="angleVal">0° · Bắc (0°)</b></span>
+          </div>
+          <button type="button" class="overlay-toggle-btn" id="overlayToggleBtn" title="Thu gọn / Mở rộng bảng điều hướng">▾</button>
         </div>
-        <input type="range" id="angleRange" min="0" max="360" step="1" value="0" aria-label="Chỉnh hướng nhà" />
-        <div class="house-dir-row" style="margin-top:10px;padding-top:8px;border-top:1px solid #edf0f3">
-          <span class="house-dir-label">☀ Giờ trong ngày <b id="hourVal">12h</b></span>
-        </div>
-        <input type="range" id="hourRange" min="6" max="18" step="0.5" value="12" aria-label="Giờ trong ngày" />
-        <div class="cam-presets-row" style="margin-top:10px;padding-top:8px;border-top:1px solid #edf0f3;display:flex;gap:6px">
-          <button class="cam-btn" id="camTopBtn" title="Nhìn thẳng từ trên xuống mặt mái (2D)">📐 2D Mái</button>
-          <button class="cam-btn" id="camFrontBtn" title="Nhìn chính diện mặt trước (Nam)">🏠 Mặt trước</button>
-          <button class="cam-btn" id="camIsoBtn" title="Phối cảnh 3D chuẩn">🌐 3D</button>
+        <div class="overlay-collapsible" id="overlayCollapsible">
+          <input type="range" id="angleRange" min="0" max="360" step="1" value="0" aria-label="Chỉnh hướng nhà" style="margin-top:6px" />
+          <div class="dir-presets-row" id="dirPresetsRow">
+            <button type="button" class="dir-btn active" data-angle="0" title="Chính Bắc">⬆ Bắc 0°</button>
+            <button type="button" class="dir-btn" data-angle="90" title="Chính Đông">➡ Đông 90°</button>
+            <button type="button" class="dir-btn" data-angle="180" title="Chính Nam (Góc chuẩn tối ưu)">⬇ Nam 180°</button>
+            <button type="button" class="dir-btn" data-angle="270" title="Chính Tây">⬅ Tây 270°</button>
+            <button type="button" class="dir-btn" data-angle="135" title="Đông Nam (Hiệu suất 97% tại VN)">↘ Đ.Nam 135°</button>
+          </div>
+          <div class="house-dir-row" style="margin-top:8px;padding-top:6px;border-top:1px solid #edf0f3">
+            <span class="house-dir-label">☀ Giờ trong ngày <b id="hourVal">12h</b></span>
+          </div>
+          <input type="range" id="hourRange" min="6" max="18" step="0.5" value="12" aria-label="Giờ trong ngày" />
+          <div class="cam-presets-row" style="margin-top:8px;padding-top:6px;border-top:1px solid #edf0f3;display:flex;gap:6px">
+            <button class="cam-btn" id="camTopBtn" title="Nhìn thẳng từ trên xuống mặt mái (2D)">📐 2D Mái</button>
+            <button class="cam-btn" id="camFrontBtn" title="Nhìn chính diện mặt trước (Nam)">🏠 Mặt trước</button>
+            <button class="cam-btn" id="camIsoBtn" title="Phối cảnh 3D chuẩn">🌐 3D</button>
+          </div>
         </div>
       </div>
       <div class="hint" id="hint">Kéo để xoay góc nhìn · Chụm 2 ngón để zoom</div>
@@ -142,7 +176,17 @@
       <div class="panel-backdrop" id="backdrop"></div>
     </div>
     <div class="panel" id="panel">
+      <div class="sheet-handle"></div>
       <button class="panel-close" id="panelClose" title="Đóng">✕</button>
+
+      <a href="https://baogiacvcc.onrender.com/#/builder" id="linkBaoGiaTop" target="_blank" rel="noopener noreferrer" class="portal-link-card" title="Chuyển sang Báo Giá VCC (baogiacvcc.onrender.com)">
+        <div class="portal-link-icon">⚡</div>
+        <div class="portal-link-content">
+          <div class="portal-link-title">BÁO GIÁ VCC (Viettel Construction) ↗</div>
+          <div class="portal-link-desc">Lập dự toán 3 bước & phân tích tài chính EVN</div>
+        </div>
+      </a>
+
       <h1>Mô phỏng 3D · Đặt chuỗi pin thủ công</h1>
       <p class="sub">Nhập số tấm, bấm Thêm. Mỗi chuỗi giữ độc lập.</p>
 
@@ -373,6 +417,7 @@
 
       <button class="save-btn" id="saveBtn">📷 Lưu ảnh mô phỏng</button>
       <button class="save-btn" id="exportPdfBtn" style="margin-top:8px;background:#0d6832">📄 Xuất PDF báo giá sơ bộ</button>
+      <button class="save-btn vcc-btn" id="linkBaoGiaBtn" title="Chuyển dữ liệu thiết kế 3D sang công cụ Lập Báo Giá VCC">⚡ Chuyển Sang Lập Báo Giá Chi Tiết VCC ↗</button>
       <button class="reset-btn" id="resetBtn">Reset mô phỏng</button>
     </div>
   </div>
@@ -520,6 +565,8 @@ controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI / 2 - 0.05;
 controls.minDistance = 4;
 controls.maxDistance = 90;
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+renderer.domElement.style.touchAction = "none";
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0xcfd8c4, 1.0));
 const sun = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -1830,7 +1877,14 @@ renderer.domElement.addEventListener("pointermove", (e) => {
     renderSummary();
   }
 });
-window.addEventListener("pointerup", () => {
+window.addEventListener("pointerup", (e) => {
+  if (e && e.pointerId != null) {
+    try {
+      if (renderer.domElement.hasPointerCapture(e.pointerId)) {
+        renderer.domElement.releasePointerCapture(e.pointerId);
+      }
+    } catch (_) {}
+  }
   if (dragging) {
     const d = dragging;
     dragging = null; controls.enabled = true; renderSelField();
@@ -2202,6 +2256,25 @@ function applyState(d) {
   syncUIFromState();
   return true;
 }
+function getDirLabel(deg) {
+  const norm = ((deg % 360) + 360) % 360;
+  if (norm >= 337.5 || norm < 22.5) return "Bắc (0°)";
+  if (norm >= 22.5 && norm < 67.5) return "Đông Bắc (45°)";
+  if (norm >= 67.5 && norm < 112.5) return "Đông (90°)";
+  if (norm >= 112.5 && norm < 157.5) return "Đông Nam (135°)";
+  if (norm >= 157.5 && norm < 202.5) return "Nam (180°)";
+  if (norm >= 202.5 && norm < 247.5) return "Tây Nam (225°)";
+  if (norm >= 247.5 && norm < 292.5) return "Tây (270°)";
+  return "Tây Bắc (315°)";
+}
+function updateDirBtnActive() {
+  const cur = ((state.houseAngle % 360) + 360) % 360;
+  document.querySelectorAll("#dirPresetsRow .dir-btn").forEach(btn => {
+    const a = parseInt(btn.dataset.angle, 10);
+    const match = Math.abs(cur - a) <= 3 || Math.abs(cur - a) >= 357;
+    btn.classList.toggle("active", match);
+  });
+}
 // đồng bộ toàn bộ control trong panel theo state (dùng sau khi khôi phục/undo)
 function syncUIFromState() {
   $("houseW").value = state.houseW; $("wLabel").textContent = state.houseW + " m";
@@ -2221,7 +2294,8 @@ function syncUIFromState() {
   syncTumControls();
   renderRackBOM();
   $("tuongBaoCheck").checked = !!state.showTuongBao;
-  $("angleRange").value = state.houseAngle; $("angleVal").textContent = state.houseAngle + "°";
+  $("angleRange").value = state.houseAngle; $("angleVal").textContent = state.houseAngle + "° · " + getDirLabel(state.houseAngle);
+  updateDirBtnActive();
   $("hourRange").value = state.hour; $("hourVal").textContent = hourLabel(state.hour);
   $("countInput").value = state.newCount;
   document.querySelectorAll("#mountOptions .opt").forEach(x => x.classList.toggle("active", x.dataset.v === state.mount));
@@ -2729,12 +2803,64 @@ $("rotRange").addEventListener("input", () => {
   const e = rotExtents(lay, deg);
   notify(`Xoay ${deg}° không vừa ${slope.label}: cần ${(e.hv * 2).toFixed(2)} m chiều sâu, mái còn ${(slope.vLen - 2 * state.edgeMargin).toFixed(2)} m — giữ ${prev}°.`, "warn");
 });
-// hướng nhà
+// hướng nhà & la bàn 4 hướng nhanh
+function setHouseAngle(angle) {
+  state.houseAngle = angle;
+  $("angleRange").value = angle;
+  $("angleVal").textContent = angle + "° · " + getDirLabel(angle);
+  houseGroup.rotation.y = THREE.MathUtils.degToRad(angle);
+  updateDirBtnActive();
+  scheduleHistory();
+  scheduleAutoSave();
+}
+
+document.querySelectorAll("#dirPresetsRow .dir-btn").forEach(btn => {
+  btn.onclick = () => {
+    const a = parseInt(btn.dataset.angle, 10);
+    setHouseAngle(a);
+  };
+});
+
 $("angleRange").addEventListener("input", () => {
   state.houseAngle = parseInt($("angleRange").value, 10);
-  $("angleVal").textContent = state.houseAngle + "°";
+  $("angleVal").textContent = state.houseAngle + "° · " + getDirLabel(state.houseAngle);
   houseGroup.rotation.y = THREE.MathUtils.degToRad(state.houseAngle);
+  updateDirBtnActive();
 });
+$("angleRange").addEventListener("change", () => {
+  scheduleHistory();
+  scheduleAutoSave();
+});
+
+// Toggle thu gọn / mở rộng overlay hướng nhà trên mobile
+$("overlayToggleBtn").onclick = () => {
+  const ov = $("houseDirOverlay");
+  ov.classList.toggle("collapsed");
+  $("overlayToggleBtn").textContent = ov.classList.contains("collapsed") ? "▸" : "▾";
+};
+
+// Liên kết 2 chiều sang Báo Giá VCC (baogiacvcc.onrender.com)
+function getBaoGiaUrl() {
+  const placed = state.strings.reduce((sum, s) => sum + placedPanels(s), 0);
+  const kwp = kwOf(placed);
+  const url = new URL("https://baogiacvcc.onrender.com/#/builder");
+  url.searchParams.set("kwp", kwp.toFixed(2));
+  url.searchParams.set("panels", placed);
+  url.searchParams.set("roof", state.roofType);
+  url.searchParams.set("mount", state.mount);
+  url.searchParams.set("dir", state.houseAngle);
+  url.searchParams.set("from", "ve3d");
+  return url.toString();
+}
+
+$("linkBaoGiaTop").onclick = (e) => {
+  e.preventDefault();
+  window.open(getBaoGiaUrl(), "_blank");
+};
+$("linkBaoGiaBtn").onclick = () => {
+  window.open(getBaoGiaUrl(), "_blank");
+};
+
 // giờ trong ngày — mặt trời + bóng đổ
 function hourLabel(h) {
   const hh = Math.floor(h), mm = Math.round((h - hh) * 60);
@@ -2968,7 +3094,8 @@ $("resetBtn").onclick = () => {
   Object.assign(state, DEFAULTS, { strings: [], selectedId: null, nextId: 1 });
   $("houseW").value = 9; $("houseL").value = 11;
   $("countInput").value = 9;
-  $("angleRange").value = 0; $("angleVal").textContent = "0°";
+  $("angleRange").value = 0; $("angleVal").textContent = "0° · Bắc (0°)";
+  updateDirBtnActive();
   $("roofAngleRange").value = 26; $("roofAngleVal").textContent = "26°";
   $("midFlatRange").value = 40; $("midFlatVal").textContent = "40%";
   $("ridgePctRange").value = 50; $("ridgePctVal").textContent = "50 : 50";
