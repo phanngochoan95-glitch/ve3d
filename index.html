@@ -34,7 +34,7 @@
   .stepper button:hover { border-color: #1473e6; color: #1473e6; }
   .stepper input { flex: 1; min-width: 0; height: 38px; text-align: center; font-size: 15px; font-weight: 600; border: 1.5px solid #d6dbe0; border-radius: 8px; color: #1b2733; }
   .frame-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 4px; }
-  .frame-action { width: 100%; padding: 10px 12px; font-size: 13px; font-weight: 600; color: #36424e; background: #fff; border: 1.5px solid #d6dbe0; border-radius: 8px; cursor: pointer; transition: all .15s ease; user-select: none; }
+  button.frame-action, .frame-action { width: 100%; padding: 10px 12px; font-size: 13px; font-weight: 600; font-family: inherit; text-align: center; color: #36424e; background: #fff; border: 1.5px solid #d6dbe0; border-radius: 8px; cursor: pointer; transition: all .15s ease; user-select: none; box-sizing: border-box; }
   .frame-action:hover { border-color: #1473e6; color: #1473e6; }
   .frame-action.active { border-color: #1473e6; background: #eef5ff; color: #0d5bbd; }
   .add-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
@@ -151,6 +151,7 @@
           </div>
           <button type="button" class="overlay-toggle-btn" id="overlayToggleBtn" title="Thu gọn / Mở rộng bảng điều hướng">▾</button>
         </div>
+        <div id="dirAdvice" style="margin:4px 0 2px;font-size:11.5px;line-height:1.3"></div>
         <div class="overlay-collapsible" id="overlayCollapsible">
           <input type="range" id="angleRange" min="0" max="360" step="1" value="0" aria-label="Chỉnh hướng nhà" style="margin-top:6px" />
           <div class="dir-presets-row" id="dirPresetsRow">
@@ -186,6 +187,18 @@
           <div class="portal-link-desc">Lập dự toán 3 bước & phân tích tài chính EVN</div>
         </div>
       </a>
+
+      <div class="onboarding-guide" id="onboardingGuide" style="margin:10px 0 14px;padding:10px 12px;background:#eef5ff;border:1.5px solid #b8d7ff;border-radius:8px;font-size:12px;color:#1b4f8a;line-height:1.5">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <strong style="color:#0d5bbd;font-size:12.5px">💡 Hướng dẫn nhanh 3 bước cho người mới:</strong>
+          <button type="button" id="closeOnboardingBtn" style="border:none;background:transparent;cursor:pointer;font-size:13px;color:#7a8a99;padding:0 4px" title="Đã hiểu, đóng hướng dẫn">✕</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <span><b>①</b> Chọn <b>loại mái</b> nhà bạn (Tôn, Ngói, Mái bằng...).</span>
+          <span><b>②</b> Bấm nút <b>⚡ Xếp tự động</b> bên dưới để lấp đầy pin ngay tức thì.</span>
+          <span><b>③</b> Xuất <b>ảnh 3D / PDF</b> hoặc <b>Chuyển sang Báo Giá VCC</b> để chốt chi phí.</span>
+        </div>
+      </div>
 
       <h1>Mô phỏng 3D · Đặt chuỗi pin thủ công</h1>
       <p class="sub">Nhập số tấm, bấm Thêm. Mỗi chuỗi giữ độc lập.</p>
@@ -307,17 +320,32 @@
       </div>
 
       <div class="field">
-        <label>Số tấm pin trong chuỗi mới</label>
-        <div class="stepper">
-          <button id="countMinus" aria-label="Giảm">−</button>
-          <input type="number" id="countInput" min="1" max="60" value="9" />
-          <button id="countPlus" aria-label="Tăng">+</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <label style="margin:0">Số tấm pin trong chuỗi mới</label>
+          <span style="font-size:11.5px;color:#6b7c8c">hoặc nhập <b style="color:#1473e6">kWp</b></span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:8px;margin-bottom:8px">
+          <div>
+            <div style="font-size:11px;color:#6b7c8c;margin-bottom:3px">Số tấm:</div>
+            <div class="stepper">
+              <button id="countMinus" type="button" aria-label="Giảm">−</button>
+              <input type="number" id="countInput" min="1" max="60" value="9" />
+              <button id="countPlus" type="button" aria-label="Tăng">+</button>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#6b7c8c;margin-bottom:3px">Công suất (kWp):</div>
+            <div class="stepper" style="position:relative">
+              <input type="number" id="targetKwpInput" min="0.6" max="60" step="0.5" value="5.58" style="padding:0 34px 0 8px;font-weight:700;color:#1473e6;text-align:center" />
+              <span style="position:absolute;right:8px;font-size:11px;color:#8c9ba5;pointer-events:none">kWp</span>
+            </div>
+          </div>
         </div>
         <div class="add-actions">
-          <div class="frame-action active" id="addBtn">＋ Thêm chuỗi</div>
-          <div class="frame-action" id="clearBtn">🗑 Xoá tất cả</div>
+          <button type="button" class="frame-action active" id="addBtn">＋ Thêm chuỗi</button>
+          <button type="button" class="frame-action" id="clearBtn">🗑 Xoá tất cả</button>
         </div>
-        <div class="frame-action" id="autoBtn" style="margin-top:8px">⚡ Xếp tự động (lấp đầy mái trống)</div>
+        <button type="button" class="frame-action" id="autoBtn" style="margin-top:8px">⚡ Xếp tự động (lấp đầy mái trống)</button>
       </div>
 
       <div class="field" id="stringsField" style="display:none">
@@ -336,9 +364,9 @@
         <div style="margin-top:12px;padding:8px 10px;background:#f0f7ff;border-radius:6px;border:1px dashed #b8d7ff;font-size:12px;color:#23527c;line-height:1.4">
           💡 <b>Chỉnh tay tấm pin:</b> Nhấp trực tiếp vào tấm pin trên 3D để <b>ẩn / hiện</b> tấm đó (chừa chỗ bồn nước, ống thông hơi).
         </div>
-        <div class="frame-action" id="restorePanelsBtn" style="display:none;margin-top:8px;font-size:12px;background:#fff8e6;border-color:#ffd591;color:#d46b08;text-align:center">↺ Khôi phục đủ tấm</div>
+        <button type="button" class="frame-action" id="restorePanelsBtn" style="display:none;margin-top:8px;font-size:12px;background:#fff8e6;border-color:#ffd591;color:#d46b08;text-align:center">↺ Khôi phục đủ tấm</button>
         <div class="add-actions">
-          <div class="frame-action" id="delBtn">🗑 Xoá chuỗi này</div>
+          <button type="button" class="frame-action" id="delBtn">🗑 Xoá chuỗi này</button>
         </div>
       </div>
 
@@ -2152,7 +2180,12 @@ function syncTumControls() {
 function renderSummary() {
   const nPanels = state.strings.reduce((a, s) => a + placedPanels(s), 0);
   const sel = state.strings.find(s => s.id === state.selectedId);
-  let html = `Tổng: <b>${state.strings.length} chuỗi</b> · <b>${nPanels} tấm</b> · <span class="kw-value">≈ ${fmtKw(kwOf(nPanels))} kWp</span>`;
+  const totalKw = kwOf(nPanels);
+  const monthlyKwh = Math.round(totalKw * YIELD_KWH_PER_KWP_DAY * 30);
+  let html = `Tổng: <b>${state.strings.length} chuỗi</b> · <b>${nPanels} tấm</b> · <span class="kw-value">≈ ${fmtKw(totalKw)} kWp</span>`;
+  if (nPanels > 0) {
+    html += ` · <span style="font-weight:700;color:#1b7a4b;background:#eafaf1;padding:1px 6px;border-radius:6px;border:1px solid #8fd9b0">≈ ${monthlyKwh.toLocaleString("vi-VN")} kWh/tháng</span>`;
+  }
   if (sel) html += `<br>Đang chọn chuỗi ${sel.id}: vị trí <b>${sel.cx.toFixed(1)}, ${sel.cy.toFixed(1)}</b> m`;
   // sức chứa của mái đang nhắm tới — để người dùng thấy trước khi bấm Thêm
   const activeSlope = slopeByKey(state.slopeKey);
@@ -2275,6 +2308,18 @@ function getDirLabel(deg) {
   if (norm >= 247.5 && norm < 292.5) return "Tây (270°)";
   return "Tây Bắc (315°)";
 }
+function updateDirAdvice() {
+  const badge = $("dirAdvice");
+  if (!badge) return;
+  const a = ((state.houseAngle % 360) + 360) % 360;
+  if (a >= 135 && a <= 225) {
+    badge.innerHTML = `<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:#f6ffed;border:1px solid #b7eb8f;color:#237804;font-weight:600">✓ Hướng đón nắng tối ưu tại VN (100%)</span>`;
+  } else if ((a >= 60 && a < 135) || (a > 225 && a <= 295)) {
+    badge.innerHTML = `<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:#fffbe6;border:1px solid #ffe58f;color:#d46b08;font-weight:600">☀ Nắng nửa ngày (~88% so với Nam)</span>`;
+  } else {
+    badge.innerHTML = `<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:#fff1f0;border:1px solid #ffa39e;color:#cf1322;font-weight:600">⚠ Mái quay Bắc: kém nắng tại VN (-15~20%). Khuyên xoay Nam 180°</span>`;
+  }
+}
 function updateDirBtnActive() {
   const cur = ((state.houseAngle % 360) + 360) % 360;
   document.querySelectorAll("#dirPresetsRow .dir-btn").forEach(btn => {
@@ -2282,6 +2327,11 @@ function updateDirBtnActive() {
     const match = Math.abs(cur - a) <= 3 || Math.abs(cur - a) >= 357;
     btn.classList.toggle("active", match);
   });
+  updateDirAdvice();
+}
+function syncTargetKwpFromCount() {
+  const kwpInput = $("targetKwpInput");
+  if (kwpInput) kwpInput.value = (state.newCount * PANEL_WATT / 1000).toFixed(2);
 }
 // đồng bộ toàn bộ control trong panel theo state (dùng sau khi khôi phục/undo)
 function syncUIFromState() {
@@ -2306,6 +2356,7 @@ function syncUIFromState() {
   updateDirBtnActive();
   $("hourRange").value = state.hour; $("hourVal").textContent = hourLabel(state.hour);
   $("countInput").value = state.newCount;
+  syncTargetKwpFromCount();
   document.querySelectorAll("#mountOptions .opt").forEach(x => x.classList.toggle("active", x.dataset.v === state.mount));
   houseGroup.rotation.y = THREE.MathUtils.degToRad(state.houseAngle);
   updateSun();
@@ -2641,14 +2692,16 @@ $("restorePanelsBtn").addEventListener("click", () => {
 function setCameraView(view) {
   const W = state.houseW, L = state.houseL, wallH = state.wallH;
   const maxDim = Math.max(W, L);
+  const aspect = (wrap.clientWidth / (wrap.clientHeight || 1)) || 1;
+  const mScale = aspect < 0.85 ? Math.min(1.85, 0.92 / aspect) : 1.0;
   if (view === "top") {
-    camera.position.set(0, maxDim * 2.2, 0.001);
+    camera.position.set(0, maxDim * 2.2 * mScale, 0.001);
     controls.target.set(0, wallH, 0);
   } else if (view === "front") {
-    camera.position.set(0, wallH + 1.2, maxDim * 1.9);
+    camera.position.set(0, (wallH + 1.2) * mScale, maxDim * 1.9 * mScale);
     controls.target.set(0, wallH + 0.8, 0);
   } else {
-    camera.position.set(-maxDim * 1.3, maxDim * 0.9, maxDim * 1.5);
+    camera.position.set(-maxDim * 1.3 * mScale, maxDim * 0.9 * mScale, maxDim * 1.5 * mScale);
     controls.target.set(0, 1.2, 0);
   }
   controls.update();
@@ -2731,12 +2784,31 @@ function onHouseDimChange() {
 $("houseW").addEventListener("change", onHouseDimChange);
 $("houseL").addEventListener("change", onHouseDimChange);
 // số tấm
-$("countMinus").onclick = () => { state.newCount = Math.max(1, state.newCount - 1); $("countInput").value = state.newCount; };
-$("countPlus").onclick = () => { state.newCount = Math.min(60, state.newCount + 1); $("countInput").value = state.newCount; };
+$("countMinus").onclick = () => { state.newCount = Math.max(1, state.newCount - 1); $("countInput").value = state.newCount; syncTargetKwpFromCount(); };
+$("countPlus").onclick = () => { state.newCount = Math.min(60, state.newCount + 1); $("countInput").value = state.newCount; syncTargetKwpFromCount(); };
 $("countInput").addEventListener("change", () => {
   state.newCount = THREE.MathUtils.clamp(Math.round(parseFloat($("countInput").value) || 1), 1, 60);
   $("countInput").value = state.newCount;
+  syncTargetKwpFromCount();
 });
+if ($("targetKwpInput")) {
+  $("targetKwpInput").addEventListener("change", () => {
+    const kwp = Math.max(0.6, parseFloat($("targetKwpInput").value) || 5.0);
+    state.newCount = THREE.MathUtils.clamp(Math.round(kwp * 1000 / PANEL_WATT), 1, 60);
+    $("countInput").value = state.newCount;
+    syncTargetKwpFromCount();
+  });
+}
+const LS_ONBOARD = "solar3d.onboard_dismissed";
+if (localStorage.getItem(LS_ONBOARD) === "1") {
+  if ($("onboardingGuide")) $("onboardingGuide").style.display = "none";
+}
+if ($("closeOnboardingBtn")) {
+  $("closeOnboardingBtn").onclick = () => {
+    if ($("onboardingGuide")) $("onboardingGuide").style.display = "none";
+    try { localStorage.setItem(LS_ONBOARD, "1"); } catch (e) {}
+  };
+}
 $("addBtn").onclick = addString;
 // xếp tự động: lấp phần mái CÒN TRỐNG (không đè chuỗi đã có, không vượt sức chứa mái)
 $("autoBtn").onclick = () => {
@@ -3326,6 +3398,7 @@ function resize() {
 }
 window.addEventListener("resize", resize);
 resize();
+setCameraView("iso");
 buildHouse();
 refreshAll();
 updateCustomFields();
@@ -3436,7 +3509,7 @@ updateCustomFields();
       restored = true;
 
       const roofObj = ROOF_TYPES.find(t => t.v === state.roofType);
-      const rName = roofObj ? roofObj.l : state.roofType;
+      const rName = roofObj ? roofObj.label : state.roofType;
       const totalP = state.strings.reduce((sum, s) => sum + placedPanels(s), 0);
       const finalKw = kwOf(totalP).toFixed(2);
       notify(`⚡ Đã nạp thiết kế từ Báo Giá VCC: ${finalKw} kWp (${totalP} tấm) · ${rName} · Hướng ${state.houseAngle}°`, "ok");
