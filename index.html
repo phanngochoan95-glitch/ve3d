@@ -2875,13 +2875,8 @@ function prepareBaoGiaPayload() {
     endClamps: bom.numEndClamps
   };
 
-  let snapshotData = null;
-  try {
-    const cOut = renderSnapshotCanvas();
-    snapshotData = cOut.toDataURL("image/jpeg", 0.85);
-  } catch (e) {
-    console.warn("Lỗi chụp snapshot 3D:", e);
-  }
+  const snapshots = captureStandardSnapshots();
+  const primarySnapshot = (snapshots[0] && snapshots[0].dataUrl) || null;
 
   return {
     type: "VCC_SOLAR_3D_DATA",
@@ -2895,7 +2890,8 @@ function prepareBaoGiaPayload() {
     l: state.houseL,
     bom: bomSummary,
     shadingLossPct: calcShadingLossPct(),
-    snapshot: snapshotData,
+    snapshot: primarySnapshot, // Tương thích ngược (1 ảnh)
+    snapshots: snapshots,      // Bộ 4 ảnh phối cảnh chất lượng cao (dàn trang PDF)
     scene3d: JSON.stringify(collectState()),
     from: "ve3d"
   };
@@ -2908,7 +2904,7 @@ function handleTransferToBaoGia() {
   // 1. Nếu đang nhúng trong iframe Studio
   if (window.parent && window.parent !== window) {
     window.parent.postMessage(payload, "*");
-    notify("✓ Đã áp dụng thiết kế 3D vào Báo Giá VCC!", "ok");
+    notify("✓ Đã nạp trọn bộ 4 ảnh phối cảnh 3D & BOM sắt thép vào Báo Giá!", "ok");
     return;
   }
 
@@ -2917,7 +2913,7 @@ function handleTransferToBaoGia() {
     try {
       window.opener.postMessage(payload, "*");
       window.opener.focus();
-      notify("✓ Đã đồng bộ thiết kế & ảnh 3D sang tab Báo Giá VCC!", "ok");
+      notify("✓ Đã đồng bộ bộ 4 ảnh phối cảnh 3D sang tab Báo Giá VCC!", "ok");
       return;
     } catch (e) {
       console.warn("Không gửi được qua opener:", e);
@@ -3006,11 +3002,11 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
-function drawWatermark(canvas, ctx) {
+function drawWatermark(canvas, ctx, customLabel) {
   const s = canvas.width / Math.max(1, wrap.clientWidth); // pixel vật lý / css (màn retina *2)
   const rows = watermarkInfo();
   const d = new Date();
-  const title = `MÔ PHỎNG 3D ĐIỆN MẶT TRỜI · ${d.toLocaleDateString("vi-VN")}`;
+  const title = customLabel ? `${customLabel} · ${d.toLocaleDateString("vi-VN")}` : `MÔ PHỎNG 3D ĐIỆN MẶT TRỜI · ${d.toLocaleDateString("vi-VN")}`;
   const pad = 14 * s, rowH = 19 * s, titleH = 21 * s, gapTitle = 7 * s;
   const FONT = 'px "Segoe UI", system-ui, Arial, sans-serif';
   // co nhẹ cỡ chữ tiêu đề nếu khung tràn ngang (màn hình rất hẹp)
@@ -3051,7 +3047,7 @@ function drawWatermark(canvas, ctx) {
   }
   ctx.restore();
 }
-function renderSnapshotCanvas() {
+function renderSnapshotCanvas(customLabel) {
   const hidden = [];
   if (ridgeHandle && ridgeHandle.visible) { ridgeHandle.visible = false; hidden.push(ridgeHandle); }
   for (const s of state.strings) {
@@ -3069,10 +3065,110 @@ function renderSnapshotCanvas() {
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, out.width, out.height);
   ctx.drawImage(renderer.domElement, 0, 0);
-  drawWatermark(out, ctx);
+  drawWatermark(out, ctx, customLabel);
   for (const o of hidden) o.visible = true;
   renderer.render(scene, camera);
   return out;
+}
+
+// Chụp ảnh độ phân giải cao cho một góc camera cụ thể
+function captureSnapshotForView(viewType, customTitle) {
+  const hidden = [];
+  if (ridgeHandle && ridgeHandle.visible) { ridgeHandle.visible = false; hidden.push(ridgeHandle); }
+  for (const s of state.strings) {
+    const sel = s.group && s.group.userData.selBox;
+    if (sel && sel.visible) { sel.visible = false; hidden.push(sel); }
+  }
+
+  const prevPos = camera.position.clone();
+  const prevTarget = controls.target.clone();
+
+  const W = state.houseW, L = state.houseL, wallH = state.wallH;
+  const maxDim = Math.max(W, L);
+
+  if (viewType === "top") {
+    camera.position.set(0, maxDim * 2.2, 0.001);
+    controls.target.set(0, wallH, 0);
+  } else if (viewType === "front") {
+    camera.position.set(0, wallH + 1.2, maxDim * 1.9);
+    controls.target.set(0, wallH + 0.8, 0);
+  } else if (viewType === "detail") {
+    camera.position.set(maxDim * 1.1, wallH + maxDim * 0.45, -maxDim * 1.0);
+    controls.target.set(0, wallH + 0.5, 0);
+  } else if (viewType === "iso") {
+    camera.position.set(-maxDim * 1.3, maxDim * 0.9, maxDim * 1.5);
+    controls.target.set(0, 1.2, 0);
+  }
+  // Nếu viewType === 'current', giữ nguyên góc nhìn người dùng đang thao tác
+  controls.update();
+
+  renderer.render(scene, camera);
+  const out = document.createElement("canvas");
+  out.width = renderer.domElement.width;
+  out.height = renderer.domElement.height;
+  const ctx = out.getContext("2d");
+  const sky = ctx.createLinearGradient(0, 0, 0, out.height);
+  sky.addColorStop(0, "#bfe3ff");
+  sky.addColorStop(0.6, "#e9f5ff");
+  sky.addColorStop(1, "#f3f7f2");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(renderer.domElement, 0, 0);
+  drawWatermark(out, ctx, customTitle);
+
+  for (const o of hidden) o.visible = true;
+
+  camera.position.copy(prevPos);
+  controls.target.copy(prevTarget);
+  controls.update();
+  renderer.render(scene, camera);
+
+  return out.toDataURL("image/jpeg", 0.82);
+}
+
+// Tự động chụp bộ 4 bức ảnh phối cảnh chuẩn để nhúng trang trọng vào Báo Giá PDF
+function captureStandardSnapshots() {
+  const snaps = [];
+  try {
+    // 1. Góc nhìn phối cảnh 3D thực tế
+    const snap1 = captureSnapshotForView("current", "1. Phối Cảnh Toàn Cảnh 3D");
+    snaps.push({
+      id: "snap_iso",
+      title: "1. Phối Cảnh Toàn Cảnh 3D",
+      desc: "Toàn cảnh góc nghiêng thực tế giàn pin trên mái nhà",
+      dataUrl: snap1
+    });
+
+    // 2. Mặt bằng 2D nhìn từ trên xuống
+    const snap2 = captureSnapshotForView("top", "2. Mặt Bằng Bố Trí Giàn Pin (Top View)");
+    snaps.push({
+      id: "snap_top",
+      title: "2. Mặt Bằng Bố Trí Giàn Pin",
+      desc: "Mặt bằng bố trí chuỗi pin và khoảng cách mép mái",
+      dataUrl: snap2
+    });
+
+    // 3. Góc chính diện đón nắng & hướng mái
+    const snap3 = captureSnapshotForView("front", "3. Góc Đón Nắng & Hướng Mái");
+    snaps.push({
+      id: "snap_front",
+      title: "3. Hướng Nghiêng & Đón Nắng",
+      desc: "Góc dốc kỹ thuật hứng bức xạ quang năng tối ưu",
+      dataUrl: snap3
+    });
+
+    // 4. Góc nghiêng cận cảnh chi tiết khung giàn & tum thang
+    const snap4 = captureSnapshotForView("detail", "4. Chi Tiết Kết Cấu Khung Giàn Sắt Thép");
+    snaps.push({
+      id: "snap_detail",
+      title: "4. Kết Cấu Khung Giàn & Tum Thang",
+      desc: "Chi tiết khung sắt, dầm xà gồ, cột trụ và độ che bóng",
+      dataUrl: snap4
+    });
+  } catch (e) {
+    console.warn("Lỗi tạo bộ snapshots:", e);
+  }
+  return snaps;
 }
 $("saveBtn").onclick = () => {
   const out = renderSnapshotCanvas();
