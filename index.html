@@ -2847,29 +2847,123 @@ $("overlayToggleBtn").onclick = () => {
   $("overlayToggleBtn").textContent = ov.classList.contains("collapsed") ? "▸" : "▾";
 };
 
-// Liên kết 2 chiều sang Báo Giá VCC (baogiacvcc.onrender.com)
-function getBaoGiaUrl() {
+// Tính ước tính tỷ lệ tổn thất bóng đổ (% Shading Derate do tum thang / tường bao)
+function calcShadingLossPct() {
+  let loss = 0;
+  if (state.showTumThang) loss += 2.5; // Tum thang sân thượng gây che khuất xiên
+  if (state.showTuongBao) loss += 1.5; // Tường bao mái che nắng thấp
+  return Math.min(8.0, loss);
+}
+
+// Chuẩn bị toàn bộ dữ liệu 3D (kWp, số tấm, BOM sắt thép, ảnh 3D snapshot, scene JSON)
+function prepareBaoGiaPayload() {
   const placed = state.strings.reduce((sum, s) => sum + placedPanels(s), 0);
   const kwp = kwOf(placed);
+  const bom = calcRackBOM();
+  const bomSummary = {
+    railM: bom.rail3x6.len,
+    railBars: bom.rail3x6.bars,
+    cotM: bom.cotD.len,
+    cotBars: bom.cotD.bars,
+    cotCount: bom.cotD.count,
+    damM: bom.dam4x8.len,
+    damBars: bom.dam4x8.bars,
+    giangM: bom.giangCheo.len,
+    giangBars: bom.giangCheo.bars,
+    feet: bom.numFeet,
+    midClamps: bom.numMidClamps,
+    endClamps: bom.numEndClamps
+  };
+
+  let snapshotData = null;
+  try {
+    const cOut = renderSnapshotCanvas();
+    snapshotData = cOut.toDataURL("image/jpeg", 0.85);
+  } catch (e) {
+    console.warn("Lỗi chụp snapshot 3D:", e);
+  }
+
+  return {
+    type: "VCC_SOLAR_3D_DATA",
+    kwp: Number(kwp.toFixed(2)),
+    panels: placed,
+    roof: state.roofType,
+    mount: state.mount,
+    dir: state.houseAngle,
+    tilt: state.roofType === 'bang' ? state.rackTilt : state.roofAngle,
+    w: state.houseW,
+    l: state.houseL,
+    bom: bomSummary,
+    shadingLossPct: calcShadingLossPct(),
+    snapshot: snapshotData,
+    scene3d: JSON.stringify(collectState()),
+    from: "ve3d"
+  };
+}
+
+// Chuyển dữ liệu sang Báo Giá VCC (hỗ trợ cả iframe embedded, window.opener và mở tab mới)
+function handleTransferToBaoGia() {
+  const payload = prepareBaoGiaPayload();
+
+  // 1. Nếu đang nhúng trong iframe Studio
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage(payload, "*");
+    notify("✓ Đã áp dụng thiết kế 3D vào Báo Giá VCC!", "ok");
+    return;
+  }
+
+  // 2. Nếu có tab opener (được mở từ Báo Giá)
+  if (window.opener && !window.opener.closed) {
+    try {
+      window.opener.postMessage(payload, "*");
+      window.opener.focus();
+      notify("✓ Đã đồng bộ thiết kế & ảnh 3D sang tab Báo Giá VCC!", "ok");
+      return;
+    } catch (e) {
+      console.warn("Không gửi được qua opener:", e);
+    }
+  }
+
+  // 3. Mở tab mới mang theo URL đầy đủ tham số
+  window.open(getBaoGiaUrl(), "_blank");
+}
+
+// Lắng nghe yêu cầu lấy dữ liệu từ Báo Giá VCC
+window.addEventListener("message", (e) => {
+  if (e.data && e.data.type === "VCC_REQUEST_3D_DATA") {
+    const payload = prepareBaoGiaPayload();
+    if (e.source) {
+      e.source.postMessage(payload, "*");
+    }
+  }
+});
+
+// Liên kết 2 chiều sang Báo Giá VCC (baogiacvcc.onrender.com)
+function getBaoGiaUrl() {
+  const payload = prepareBaoGiaPayload();
   const url = new URL("https://baogiacvcc.onrender.com/#/builder");
-  url.searchParams.set("kwp", kwp.toFixed(2));
-  url.searchParams.set("panels", placed);
-  url.searchParams.set("roof", state.roofType);
-  url.searchParams.set("mount", state.mount);
-  url.searchParams.set("dir", state.houseAngle);
-  url.searchParams.set("tilt", state.roofType === 'bang' ? state.rackTilt : state.roofAngle);
-  url.searchParams.set("w", state.houseW);
-  url.searchParams.set("l", state.houseL);
+  url.searchParams.set("kwp", payload.kwp.toFixed(2));
+  url.searchParams.set("panels", payload.panels);
+  url.searchParams.set("roof", payload.roof);
+  url.searchParams.set("mount", payload.mount);
+  url.searchParams.set("dir", payload.dir);
+  url.searchParams.set("tilt", payload.tilt);
+  url.searchParams.set("w", payload.w);
+  url.searchParams.set("l", payload.l);
+  url.searchParams.set("bom", JSON.stringify(payload.bom));
+  if (payload.shadingLossPct > 0) {
+    url.searchParams.set("shading", payload.shadingLossPct);
+  }
   url.searchParams.set("from", "ve3d");
   return url.toString();
 }
 
 $("linkBaoGiaTop").onclick = (e) => {
   e.preventDefault();
-  window.open(getBaoGiaUrl(), "_blank");
+  handleTransferToBaoGia();
 };
 $("linkBaoGiaBtn").onclick = () => {
-  window.open(getBaoGiaUrl(), "_blank");
+  handleTransferToBaoGia();
 };
 
 // giờ trong ngày — mặt trời + bóng đổ
@@ -3197,6 +3291,25 @@ updateCustomFields();
       if (params.has('l')) {
         const l = parseFloat(params.get('l'));
         if (!isNaN(l) && l >= 4 && l <= 30) state.houseL = clampNum(l, 4, 30, state.houseL);
+      }
+
+      // Thông tin khách hàng & dự án từ Báo Giá VCC (nếu có)
+      if (params.get('c_name') || params.get('c_addr')) {
+        state.customerInfo = {
+          name: params.get('c_name') || '',
+          address: params.get('c_addr') || '',
+          lat: params.get('lat') || null,
+          lon: params.get('lon') || null
+        };
+      }
+
+      // Chế độ nhúng Studio trong iframe
+      if (params.get('embedded') === '1' || (window.parent && window.parent !== window)) {
+        document.body.classList.add('embedded-studio');
+        const linkTop = $('linkBaoGiaTop');
+        if (linkTop) linkTop.style.display = 'none';
+        const linkBtn = $('linkBaoGiaBtn');
+        if (linkBtn) linkBtn.innerHTML = '✓ Áp Dụng Bản Vẽ 3D Này Vào Báo Giá VCC ↗';
       }
 
       buildHouse();
