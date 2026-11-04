@@ -3428,13 +3428,14 @@ updateCustomFields();
         truncated: 'hai_doc_bang', '2doc_bang': 'hai_doc_bang', hai_doc_bang: 'hai_doc_bang'
       };
       const roofVal = params.get('roof');
+      let roofWarn = null;
       if (roofVal) {
         if (roofMap[roofVal]) {
           state.roofType = roofMap[roofVal];
         } else {
           // Key lạ từ bên gửi: fallback mái tôn và báo rõ thay vì âm thầm dựng sai loại
           state.roofType = 'ton';
-          notify(`⚠ Loại mái "${roofVal}" gửi từ Báo Giá không nhận dạng được — đã dựng Mái tôn thay thế. Các loại nhận: tôn, ngói, Nhật, bằng, 2 dốc + bằng.`, "warn");
+          roofWarn = `⚠ Loại mái "${roofVal}" gửi từ Báo Giá không nhận dạng được — đã dựng Mái tôn thay thế`;
         }
       }
 
@@ -3518,7 +3519,7 @@ updateCustomFields();
       const rName = roofObj ? roofObj.label : state.roofType;
       const totalP = state.strings.reduce((sum, s) => sum + placedPanels(s), 0);
       const finalKw = kwOf(totalP).toFixed(2);
-      notify(`⚡ Đã nạp thiết kế từ Báo Giá VCC: ${finalKw} kWp (${totalP} tấm) · ${rName} · Hướng ${state.houseAngle}°`, "ok");
+      notify(`⚡ Đã nạp thiết kế từ Báo Giá VCC: ${finalKw} kWp (${totalP} tấm) · ${rName} · Hướng ${state.houseAngle}°${roofWarn ? ` · ${roofWarn}` : ""}`, roofWarn ? "warn" : "ok");
     } catch (err) {
       console.warn("Lỗi nạp tham số từ VCC:", err);
     } finally {
