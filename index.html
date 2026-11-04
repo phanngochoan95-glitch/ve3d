@@ -2170,6 +2170,14 @@ function renderSummary() {
   }
   $("summary").innerHTML = html;
   renderRackBOM();
+  const btnBaoGia = $("linkBaoGiaBtn");
+  if (btnBaoGia) {
+    if (nPanels > 0) {
+      btnBaoGia.innerHTML = `⚡ Chuyển Sang Lập Báo Giá VCC (${fmtKw(kwOf(nPanels))} kWp · ${nPanels} tấm) ↗`;
+    } else {
+      btnBaoGia.innerHTML = `⚡ Chuyển Sang Lập Báo Giá Chi Tiết VCC ↗`;
+    }
+  }
   $("hint").textContent = state.strings.length
     ? "Chạm vào chuỗi pin để kéo · chạm chỗ trống để xoay góc nhìn"
     : "Kéo để xoay góc nhìn · Chụm 2 ngón để zoom";
@@ -2849,6 +2857,9 @@ function getBaoGiaUrl() {
   url.searchParams.set("roof", state.roofType);
   url.searchParams.set("mount", state.mount);
   url.searchParams.set("dir", state.houseAngle);
+  url.searchParams.set("tilt", state.roofType === 'bang' ? state.rackTilt : state.roofAngle);
+  url.searchParams.set("w", state.houseW);
+  url.searchParams.set("l", state.houseL);
   url.searchParams.set("from", "ve3d");
   return url.toString();
 }
@@ -3128,11 +3139,108 @@ resize();
 buildHouse();
 refreshAll();
 updateCustomFields();
-/* khôi phục phiên làm việc: ưu tiên link chia sẻ (#d=...) rồi tới bản tự động lưu */
+/* khôi phục phiên làm việc: ưu tiên tham số URL từ Báo Giá VCC -> link chia sẻ (#d=...) -> bản tự động lưu */
 (function boot() {
   let restored = false;
+
+  // 1. Kiểm tra tham số truyền từ Báo Giá VCC (baogiacvcc.onrender.com) hoặc URL
+  let search = window.location.search;
+  if (!search && window.location.hash.includes('?')) {
+    search = window.location.hash.slice(window.location.hash.indexOf('?'));
+  }
+  const params = new URLSearchParams(search);
+  const fromVcc = params.get('from') === 'vcc';
+  const hasKwp = params.has('kwp');
+  const hasRoof = params.has('roof');
+  const hasPanels = params.has('panels');
+
+  if (fromVcc || hasKwp || hasRoof || hasPanels) {
+    try {
+      applying = true;
+      const roofMap = {
+        metal: 'ton', ton: 'ton',
+        tile: 'ngoi', ngoi: 'ngoi',
+        nhat: 'nhat',
+        concrete: 'bang', bang: 'bang',
+        truncated: 'truncated', '2doc_bang': 'truncated'
+      };
+      const roofVal = params.get('roof');
+      if (roofVal && roofMap[roofVal]) {
+        state.roofType = roofMap[roofVal];
+      }
+
+      const mountVal = params.get('mount');
+      if (mountVal) {
+        state.mount = (mountVal === 'khungsat' || mountVal === 'khung_sat') ? 'khungsat' : 'apmai';
+      }
+
+      if (params.has('dir')) {
+        const d = parseFloat(params.get('dir'));
+        if (!isNaN(d)) state.houseAngle = clampNum(d, 0, 360, 0);
+      }
+
+      if (params.has('tilt')) {
+        const t = parseFloat(params.get('tilt'));
+        if (!isNaN(t)) {
+          if (state.roofType === 'bang' && state.mount === 'khungsat') {
+            state.rackTilt = clampNum(t, 10, 25, 15);
+          } else {
+            state.roofAngle = clampNum(t, 10, 45, 26);
+          }
+        }
+      }
+
+      if (params.has('w')) {
+        const w = parseFloat(params.get('w'));
+        if (!isNaN(w) && w >= 4 && w <= 30) state.houseW = clampNum(w, 4, 30, state.houseW);
+      }
+      if (params.has('l')) {
+        const l = parseFloat(params.get('l'));
+        if (!isNaN(l) && l >= 4 && l <= 30) state.houseL = clampNum(l, 4, 30, state.houseL);
+      }
+
+      buildHouse();
+
+      const kwpIn = params.has('kwp') ? parseFloat(params.get('kwp')) : null;
+      const targetPanels = params.has('panels') 
+        ? parseInt(params.get('panels'), 10) 
+        : (kwpIn ? Math.ceil((kwpIn * 1000) / 620) : null);
+
+      if (targetPanels && targetPanels > 0) {
+        state.strings = [];
+        const dir = state.dirChoice || "doc";
+        let placedTotal = 0;
+        for (const slope of slopes) {
+          if (placedTotal >= targetPanels) break;
+          const cap = roofCapacity(slope, dir);
+          if (cap < 1) continue;
+          const need = targetPanels - placedTotal;
+          const toPlace = Math.min(cap, need);
+          const res = placeStringOnSlope(slope, toPlace, dir);
+          if (res && res.str) {
+            placedTotal += placedPanels(res.str);
+          }
+        }
+      }
+
+      syncUIFromState();
+      restored = true;
+
+      const roofObj = ROOF_TYPES.find(t => t.v === state.roofType);
+      const rName = roofObj ? roofObj.l : state.roofType;
+      const totalP = state.strings.reduce((sum, s) => sum + placedPanels(s), 0);
+      const finalKw = kwOf(totalP).toFixed(2);
+      notify(`⚡ Đã nạp thiết kế từ Báo Giá VCC: ${finalKw} kWp (${totalP} tấm) · ${rName} · Hướng ${state.houseAngle}°`, "ok");
+    } catch (err) {
+      console.warn("Lỗi nạp tham số từ VCC:", err);
+    } finally {
+      applying = false;
+    }
+  }
+
+  // 2. Link chia sẻ (#d=...)
   const m = location.hash.match(/^#d=(.+)$/);
-  if (m) {
+  if (!restored && m) {
     try {
       applying = true;
       if (applyState(JSON.parse(decodeURIComponent(m[1])))) restored = true;
