@@ -3424,12 +3424,18 @@ updateCustomFields();
         metal: 'ton', ton: 'ton',
         tile: 'ngoi', ngoi: 'ngoi',
         nhat: 'nhat',
-        concrete: 'bang', bang: 'bang',
-        truncated: 'truncated', '2doc_bang': 'truncated'
+        concrete: 'bang', bang: 'bang', flat: 'bang',
+        truncated: 'hai_doc_bang', '2doc_bang': 'hai_doc_bang', hai_doc_bang: 'hai_doc_bang'
       };
       const roofVal = params.get('roof');
-      if (roofVal && roofMap[roofVal]) {
-        state.roofType = roofMap[roofVal];
+      if (roofVal) {
+        if (roofMap[roofVal]) {
+          state.roofType = roofMap[roofVal];
+        } else {
+          // Key lạ từ bên gửi: fallback mái tôn và báo rõ thay vì âm thầm dựng sai loại
+          state.roofType = 'ton';
+          notify(`⚠ Loại mái "${roofVal}" gửi từ Báo Giá không nhận dạng được — đã dựng Mái tôn thay thế. Các loại nhận: tôn, ngói, Nhật, bằng, 2 dốc + bằng.`, "warn");
+        }
       }
 
       const mountVal = params.get('mount');
