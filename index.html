@@ -257,10 +257,16 @@
             <input type="range" id="rackHRange" min="0.2" max="2.5" step="0.05" value="0.4" aria-label="Chiều cao khung sắt" />
           </div>
           <div id="rackTiltField" style="margin-top:10px">
-            <label style="display:block;font-size:12px;font-weight:600;color:#36424e;margin-bottom:2px">
-              Góc nghiêng khung sắt (mái bằng): <b id="rackTiltVal" style="color:#1473e6">15°</b>
-            </label>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+              <label style="font-size:12px;font-weight:600;color:#36424e">
+                Góc nghiêng khung sắt (mái bằng): <b id="rackTiltVal" style="color:#1473e6">15°</b>
+              </label>
+              <span id="optTiltBadge" style="font-size:11px;color:#059669;font-weight:600"></span>
+            </div>
             <input type="range" id="rackTiltRange" min="10" max="25" step="1" value="15" aria-label="Góc nghiêng khung sắt" />
+            <button type="button" id="optTiltBtn" style="margin-top:6px;width:100%;font-size:11.5px;padding:4px 8px;border-radius:6px;border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:4px">
+              📐 Đặt góc nghiêng tối ưu đón nắng VN (13°)
+            </button>
           </div>
           <div id="rackSpacingField" style="margin-top:10px">
             <label style="display:block;font-size:12px;font-weight:600;color:#36424e;margin-bottom:2px">
@@ -422,6 +428,31 @@
           <span>Tường bao / lan can quanh mái bằng (cao 0.55m)</span>
           <input type="checkbox" id="tuongBaoCheck" aria-label="Bật tường bao" />
         </div>
+        <div class="exp-row" id="bonNuocField" style="margin-top:6px">
+          <span style="font-weight:600;color:#2c3e50">Bồn nước Inox trên mái (Téc nước)</span>
+          <input type="checkbox" id="bonNuocCheck" aria-label="Bật bồn nước inox" />
+        </div>
+        <div id="bonNuocDetails" style="display:none;margin-top:8px;padding:10px;background:#f0f5fa;border-radius:6px;border:1px solid #d1dbe5">
+          <div style="display:flex;gap:6px;margin-bottom:8px">
+            <button type="button" class="bon-type-btn active" data-type="nam" id="bonTypeNam" style="flex:1;font-size:11px;padding:4px;border-radius:4px;border:1px solid #93c5fd;background:#1473e6;color:#fff;cursor:pointer;font-weight:600">Bồn nằm (1500L Sơn Hà)</button>
+            <button type="button" class="bon-type-btn" data-type="dung" id="bonTypeDung" style="flex:1;font-size:11px;padding:4px;border-radius:4px;border:1px solid #cbd5e0;background:#fff;color:#334155;cursor:pointer;font-weight:600">Bồn đứng (1500L)</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div>
+              <label style="display:block;font-size:10px;color:#718096;margin-bottom:1px">Dịch X (trái-phải):</label>
+              <input type="range" id="bonNuocXRange" min="-10" max="10" step="0.1" value="0" aria-label="Vị trí X bồn nước" />
+            </div>
+            <div>
+              <label style="display:block;font-size:10px;color:#718096;margin-bottom:1px">Dịch Z (sau-trước):</label>
+              <input type="range" id="bonNuocZRange" min="-10" max="10" step="0.1" value="0" aria-label="Vị trí Z bồn nước" />
+            </div>
+          </div>
+          <div style="font-size:10.5px;color:#4a5568;margin-top:6px;font-style:italic">💡 Nhấp &amp; kéo trực tiếp bồn nước trên canvas 3D để di chuyển. Giàn pin sẽ tự động né vùng này.</div>
+        </div>
+        <div class="exp-row" id="setbackField" style="margin-top:6px">
+          <span>Hành lang an toàn gió bão (viền 0.4m mép mái)</span>
+          <input type="checkbox" id="setbackCheck" checked aria-label="Bật đường biên an toàn mép mái" />
+        </div>
       </details>
 
       <details class="field" id="ioField" open>
@@ -566,6 +597,11 @@ const DEFAULTS = {
   tumX: null,       // vị trí tương đối X (m) trên sàn mái; null = tính theo góc sau-trái
   tumZ: null,       // vị trí tương đối Z (m) trên sàn mái; null = tính theo góc sau-trái
   showTuongBao: false,  // tính năng thử nghiệm: tường bao quanh mái bằng
+  showBonNuoc: false,   // tính năng vật cản: bồn nước inox trên mái
+  bonNuocType: "nam",   // "nam" (bồn nằm ngang) hoặc "dung" (bồn đứng)
+  bonNuocX: null,       // vị trí tương đối X (m) trên sàn mái; null = tính theo góc sau-phải
+  bonNuocZ: null,       // vị trí tương đối Z (m) trên sàn mái; null = tính theo góc sau-phải
+  showSetback: true,    // đường biên an toàn mép mái (hành lang an toàn gió bão 0.40m)
 };
 const state = {
   ...DEFAULTS,
@@ -959,6 +995,7 @@ let slabMesh = null;
 let houseApex = null; // đỉnh/mặt mái cao nhất {x, y} để vẽ đường ghi chiều cao
 let ridgeHandle = null; // thanh xanh kéo-thả để chỉnh đỉnh/dải bằng trên mô hình
 let tumMeshGroup = null; // nhóm mesh tum thang để kéo-thả trên 3D
+let bonNuocGroup = null; // nhóm mesh bồn nước inox để kéo-thả trên 3D
 // Tấm bịt tam giác ở 2 đầu mái (hông nhà)
 function triCap(p1, p2, apex) {
   const geo = new THREE.BufferGeometry();
@@ -1047,6 +1084,166 @@ function getTumPos(W, L, tumW, tumL) {
   return { x, z, maxOffsetW, maxOffsetL };
 }
 
+// Vị trí bồn nước Inox hợp lệ trên mặt sàn mái bằng
+function getBonNuocPos(W, L) {
+  const isDung = state.bonNuocType === "dung";
+  const bW = isDung ? 1.3 : 1.3;
+  const bL = isDung ? 1.3 : 2.0;
+  const maxOffsetW = Math.max(0, (W - bW) / 2 - 0.25);
+  const maxOffsetL = Math.max(0, (L - bL) / 2 - 0.25);
+  const defaultX = W / 2 - bW / 2 - 0.35; // góc sau-phải mặc định (đối xứng tum thang sau-trái)
+  const defaultZ = -L / 2 + bL / 2 + 0.35;
+  const x = state.bonNuocX != null ? THREE.MathUtils.clamp(state.bonNuocX, -maxOffsetW, maxOffsetW) : defaultX;
+  const z = state.bonNuocZ != null ? THREE.MathUtils.clamp(state.bonNuocZ, -maxOffsetL, maxOffsetL) : defaultZ;
+  return { x, z, maxOffsetW, maxOffsetL, bW, bL };
+}
+
+// Dựng mô hình 3D Bồn nước Inox (Téc nước Sơn Hà / Tân Á Đại Thành 1500L-2000L)
+function buildBonNuocMesh(W, L) {
+  const { x, z } = getBonNuocPos(W, L);
+  const grp = new THREE.Group();
+  grp.userData.isBonNuoc = true;
+  const roofY = state.wallH + (state.roofType === "bang" ? 0.45 : 0.25);
+  const isDung = state.bonNuocType === "dung";
+
+  const inoxMat = new THREE.MeshStandardMaterial({
+    color: 0xd8dde4,
+    metalness: 0.85,
+    roughness: 0.25,
+  });
+  const steelMat = new THREE.MeshStandardMaterial({
+    color: 0x334155,
+    metalness: 0.5,
+    roughness: 0.6,
+  });
+
+  if (isDung) {
+    // Bồn đứng (Trụ tròn đứng dung tích 1500L)
+    const tankR = 0.58, tankH = 1.5;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(tankR, tankR, tankH, 24), inoxMat);
+    body.position.set(0, 0.3 + tankH / 2, 0);
+    body.castShadow = body.receiveShadow = true;
+    body.userData.isBonNuoc = true;
+    grp.add(body);
+
+    // Nắp bồn inox hình nón
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(tankR + 0.02, 0.2, 24), inoxMat);
+    cap.position.set(0, 0.3 + tankH + 0.1, 0);
+    cap.castShadow = true;
+    cap.userData.isBonNuoc = true;
+    grp.add(cap);
+
+    // Chân đế thép hộp 4 chân
+    const legH = 0.3;
+    const base = new THREE.Mesh(new THREE.BoxGeometry(tankR * 2 + 0.1, legH, tankR * 2 + 0.1), steelMat);
+    base.position.set(0, legH / 2, 0);
+    base.castShadow = true;
+    base.userData.isBonNuoc = true;
+    grp.add(base);
+  } else {
+    // Bồn nằm ngang (1500L - 2000L tiêu chuẩn mái nhà VN)
+    const tankR = 0.55, tankLen = 1.6;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(tankR, tankR, tankLen, 24), inoxMat);
+    body.rotation.x = Math.PI / 2; // nằm ngang dọc trục Z
+    body.position.set(0, 0.35 + tankR, 0);
+    body.castShadow = body.receiveShadow = true;
+    body.userData.isBonNuoc = true;
+    grp.add(body);
+
+    // 2 chỏm cầu bán nguyệt 2 đầu bồn
+    for (const zSide of [-1, 1]) {
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(tankR, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), inoxMat);
+      cap.rotation.x = zSide * Math.PI / 2;
+      cap.position.set(0, 0.35 + tankR, zSide * (tankLen / 2));
+      cap.castShadow = true;
+      cap.userData.isBonNuoc = true;
+      grp.add(cap);
+    }
+
+    // 2 chân đỡ thép yên ngựa
+    for (const zSide of [-0.45, 0.45]) {
+      const saddle = new THREE.Mesh(new THREE.BoxGeometry(tankR * 2 + 0.15, 0.35, 0.12), steelMat);
+      saddle.position.set(0, 0.35 / 2, zSide * tankLen);
+      saddle.castShadow = true;
+      saddle.userData.isBonNuoc = true;
+      grp.add(saddle);
+    }
+  }
+
+  grp.position.set(x, roofY, z);
+  return grp;
+}
+
+// Kiểm tra danh sách chuỗi pin vi phạm khoảng lùi mép mái (< 0.40m)
+function checkSetbackViolations() {
+  const d = 0.38; // ngưỡng kiểm tra sát mép (m)
+  const bad = [];
+  for (const s of state.strings) {
+    const slope = slopeByKey(s.slopeKey);
+    if (!slope) continue;
+    const lay = layoutSlots(s.count, s.dir, slope);
+    const e = rotExtents(lay, s.rot);
+    if (slope.key === "bang") {
+      const W = state.houseW, L = state.houseL;
+      if (Math.abs(s.cx) + e.hu > W / 2 - d || Math.abs(s.cy) + e.hv > L / 2 - d) {
+        bad.push(s.id);
+      }
+    } else {
+      const uLen = slope.uLen, vLen = slope.vLen;
+      if (Math.abs(s.cx) + e.hu > uLen / 2 - d || s.cy - e.hv < d || s.cy + e.hv > vLen - d) {
+        bad.push(s.id);
+      }
+    }
+  }
+  return bad;
+}
+
+// Vẽ đường biên an toàn mép mái (Hành lang an toàn gió bão 0.40m)
+function addSetbackLines(parent, slopesList) {
+  if (state.showSetback === false) return;
+  const d = 0.40; // hành lang an toàn gió bão 0.40m
+  const violations = checkSetbackViolations();
+  const hasViolation = violations.length > 0;
+  const lineMat = new THREE.LineDashedMaterial({
+    color: hasViolation ? 0xef4444 : 0xf59e0b, // đỏ nếu có chuỗi vi phạm, vàng cam nếu an toàn
+    dashSize: 0.35,
+    gapSize: 0.18,
+  });
+
+  for (const slope of slopesList) {
+    if (!slope || !slope.origin || !slope.u || !slope.v) continue;
+    const points = [];
+    if (slope.key === "bang") {
+      const W = state.houseW, L = state.houseL;
+      if (W <= 2 * d + 0.2 || L <= 2 * d + 0.2) continue;
+      const hw = W / 2 - d, hl = L / 2 - d;
+      const y = slope.origin.y + 0.008;
+      points.push(new THREE.Vector3(-hw, y, -hl));
+      points.push(new THREE.Vector3(hw, y, -hl));
+      points.push(new THREE.Vector3(hw, y, hl));
+      points.push(new THREE.Vector3(-hw, y, hl));
+      points.push(new THREE.Vector3(-hw, y, -hl));
+    } else {
+      const uLen = slope.uLen, vLen = slope.vLen;
+      if (uLen <= 2 * d + 0.2 || vLen <= 2 * d + 0.2) continue;
+      const hu = uLen / 2 - d;
+      const v0 = d, v1 = vLen - d;
+      const uDir = slope.u, vDir = slope.v, nDir = slope.n, orig = slope.origin;
+      const to3D = (u, v) => orig.clone().addScaledVector(uDir, u).addScaledVector(vDir, v).addScaledVector(nDir, 0.008);
+      points.push(to3D(-hu, v0));
+      points.push(to3D(hu, v0));
+      points.push(to3D(hu, v1));
+      points.push(to3D(-hu, v1));
+      points.push(to3D(-hu, v0));
+    }
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(geo, lineMat);
+    line.computeLineDistances();
+    line.userData.isSetbackLine = true;
+    parent.add(line);
+  }
+}
+
 function buildHouse() {
   // xoá nội dung cũ — dispose geometry/texture trước để không rò rỉ bộ nhớ GPU
   disposeTree(houseGroup);
@@ -1117,6 +1314,13 @@ function buildHouse() {
     houseGroup.add(tumGrp);
     tumMeshGroup = tumGrp;
   }
+  bonNuocGroup = null;
+  // Bồn nước Inox trên mái bằng
+  if ((state.roofType === "bang" || state.roofType === "hai_doc_bang") && state.showBonNuoc) {
+    const bnMesh = buildBonNuocMesh(W, L);
+    houseGroup.add(bnMesh);
+    bonNuocGroup = bnMesh;
+  }
   if (state.roofType === "bang" && state.showTuongBao) {
     const wallThick = 0.18, parapetH = 0.55;
     const roofY = state.wallH + 0.45;
@@ -1135,6 +1339,8 @@ function buildHouse() {
   }
   if (parts.slab) slabMesh = parts.slopes[0].mesh;
   slopes = parts.slopes;
+  // Đường biên an toàn mép mái (Hành lang an toàn gió bão 0.40m)
+  addSetbackLines(houseGroup, slopes);
   houseApex = parts.handle ? { x: parts.handle.x, y: parts.handle.y }
     : parts.apex ?? (parts.slab ? { x: 0, y: parts.slopes[0].origin.y } : null);
   // thanh xanh kéo-thả chỉnh đỉnh / dải bằng
@@ -1342,16 +1548,38 @@ function stringFootprint(slope, str) {
   return { cx: str.cx, cy: str.cy, hu: e.hu + sp.u / 2, hv: e.hv + sp.v / 2 };
 }
 function otherFootprints(slope, exceptId) {
-  return state.strings
+  const fps = state.strings
     .filter(s => s.slopeKey === slope.key && s.id !== exceptId)
     .map(s => stringFootprint(slope, s));
+
+  // Thêm vùng cản của Tum Thang nếu ở mái bằng hoặc dải bằng
+  if ((state.roofType === "bang" || state.roofType === "hai_doc_bang") && state.showTumThang && (slope.key === "bang" || slope.key === "bang-giua")) {
+    const W = state.houseW, L = state.houseL;
+    const tumW = Math.min(state.tumW ?? 2.8, W - 0.6);
+    const tumL = Math.min(state.tumL ?? 3.5, L - 0.6);
+    const { x: tx, z: tz } = getTumPos(W, L, tumW, tumL);
+    fps.push({ cx: tx, cy: tz, hu: tumW / 2 + 0.15, hv: tumL / 2 + 0.15, isObstacle: true, name: "Tum thang" });
+  }
+
+  // Thêm vùng cản của Bồn nước Inox nếu bật
+  if ((state.roofType === "bang" || state.roofType === "hai_doc_bang") && state.showBonNuoc && (slope.key === "bang" || slope.key === "bang-giua")) {
+    const W = state.houseW, L = state.houseL;
+    const { x: bx, z: bz, bW, bL } = getBonNuocPos(W, L);
+    fps.push({ cx: bx, cy: bz, hu: bW / 2 + 0.15, hv: bL / 2 + 0.15, isObstacle: true, name: "Bồn nước Inox" });
+  }
+
+  return fps;
 }
-// khối tấm `lay` (xoay `rot`) đặt tại (cx,cy) có đè lên chuỗi khác không
+// khối tấm `lay` (xoay `rot`) đặt tại (cx,cy) có đè lên chuỗi khác hoặc vật cản không
 function collides(cx, cy, lay, fps, rot = 0, slope = null) {
   const e = rotExtents(lay, rot);
   const sp = getRackSpacing(slope);
   const hu = e.hu + sp.u / 2, hv = e.hv + sp.v / 2;
-  return fps.some(f => Math.abs(cx - f.cx) < f.hu + hu - 1e-6 && Math.abs(cy - f.cy) < f.hv + hv - 1e-6);
+  return fps.some(f => {
+    const fhu = f.isObstacle ? f.hu + e.hu : f.hu + hu;
+    const fhv = f.isObstacle ? f.hv + e.hv : f.hv + hv;
+    return Math.abs(cx - f.cx) < fhu - 1e-6 && Math.abs(cy - f.cy) < fhv - 1e-6;
+  });
 }
 // 1 điểm (x,y) trong hệ mặt mái có nằm trong mái không (mái Nhật hẹp dần lên đỉnh)
 function pointInRoof(slope, x, y, margin) {
@@ -1854,6 +2082,16 @@ renderer.domElement.addEventListener("pointerdown", (e) => {
       return;
     }
   }
+  if (bonNuocGroup) {
+    const bhits = raycaster.intersectObjects(bonNuocGroup.children, true);
+    if (bhits.length) {
+      const roofY = state.wallH + (state.roofType === "bang" ? 0.45 : 0.25);
+      dragging = { type: "bonNuoc", planeY: roofY };
+      controls.enabled = false;
+      renderer.domElement.setPointerCapture(e.pointerId);
+      return;
+    }
+  }
   if (ridgeHandle) {
     const hh = raycaster.intersectObject(ridgeHandle, false);
     if (hh.length) {
@@ -1883,6 +2121,20 @@ renderer.domElement.addEventListener("pointermove", (e) => {
       state.tumZ = THREE.MathUtils.clamp(p.z, -maxOffsetL, maxOffsetL);
       buildHouse();
       syncTumControls();
+    }
+    return;
+  }
+  if (dragging.type === "bonNuoc") {
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -dragging.planeY);
+    const p = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(plane, p)) {
+      houseGroup.worldToLocal(p);
+      const W = state.houseW, L = state.houseL;
+      const { maxOffsetW, maxOffsetL } = getBonNuocPos(W, L);
+      state.bonNuocX = THREE.MathUtils.clamp(p.x, -maxOffsetW, maxOffsetW);
+      state.bonNuocZ = THREE.MathUtils.clamp(p.z, -maxOffsetL, maxOffsetL);
+      buildHouse();
+      syncBonNuocControls();
     }
     return;
   }
@@ -2185,14 +2437,78 @@ function syncTumControls() {
   $("tumZRange").value = z.toFixed(2);
 }
 
+function syncBonNuocControls() {
+  const isFlat = state.roofType === "bang" || state.roofType === "hai_doc_bang";
+  if ($("bonNuocField")) $("bonNuocField").style.display = isFlat ? "flex" : "none";
+  if ($("bonNuocCheck")) $("bonNuocCheck").checked = !!state.showBonNuoc;
+  if ($("bonNuocDetails")) $("bonNuocDetails").style.display = (isFlat && state.showBonNuoc) ? "block" : "none";
+  if (!isFlat || !state.showBonNuoc) return;
+
+  const W = state.houseW, L = state.houseL;
+  const { x, z, maxOffsetW, maxOffsetL } = getBonNuocPos(W, L);
+  if ($("bonNuocXRange")) {
+    $("bonNuocXRange").min = (-maxOffsetW).toFixed(2);
+    $("bonNuocXRange").max = (maxOffsetW).toFixed(2);
+    $("bonNuocXRange").value = x.toFixed(2);
+  }
+  if ($("bonNuocZRange")) {
+    $("bonNuocZRange").min = (-maxOffsetL).toFixed(2);
+    $("bonNuocZRange").max = (maxOffsetL).toFixed(2);
+    $("bonNuocZRange").value = z.toFixed(2);
+  }
+  const isDung = state.bonNuocType === "dung";
+  if ($("bonTypeNam")) {
+    $("bonTypeNam").style.background = isDung ? "#fff" : "#1473e6";
+    $("bonTypeNam").style.color = isDung ? "#334155" : "#fff";
+  }
+  if ($("bonTypeDung")) {
+    $("bonTypeDung").style.background = isDung ? "#1473e6" : "#fff";
+    $("bonTypeDung").style.color = isDung ? "#fff" : "#334155";
+  }
+}
+
+// Tính hệ số hiệu chỉnh quang năng theo góc nghiêng và hướng đón nắng tại Việt Nam
+function calcSolarFactor() {
+  let tilt = 13, az = 180;
+  if (state.mount === "khungsat") {
+    tilt = state.rackTilt ?? 15;
+    // Khung sắt trên mái bằng ở VN tiêu chuẩn lắp đón nắng hướng Nam 180°
+    az = 180;
+  } else {
+    tilt = state.roofAngle ?? 26;
+    az = ((state.houseAngle % 360) + 360) % 360;
+  }
+  const diffAz = Math.abs((((az - 180) % 360) + 360) % 360 - 180);
+  const diffTilt = Math.abs(tilt - 13);
+  const azFactor = 1.0 - 0.18 * (diffAz / 180);
+  const tiltFactor = Math.max(0.85, 1.0 - 0.0035 * diffTilt);
+  return THREE.MathUtils.clamp(azFactor * tiltFactor, 0.78, 1.02);
+}
+
+function syncOptTiltBadge() {
+  const badge = $("optTiltBadge");
+  if (!badge) return;
+  const t = state.rackTilt ?? 15;
+  if (t === 13) {
+    badge.textContent = "✓ Tối ưu 100%";
+    badge.style.color = "#059669";
+  } else {
+    const f = Math.round(calcSolarFactor() * 100);
+    badge.textContent = `~${f}% nắng`;
+    badge.style.color = t >= 10 && t <= 16 ? "#0284c7" : "#d97706";
+  }
+}
+
 function renderSummary() {
   const nPanels = state.strings.reduce((a, s) => a + placedPanels(s), 0);
   const sel = state.strings.find(s => s.id === state.selectedId);
   const totalKw = kwOf(nPanels);
-  const monthlyKwh = Math.round(totalKw * YIELD_KWH_PER_KWP_DAY * 30);
+  const solarFactor = calcSolarFactor();
+  const monthlyKwh = Math.round(totalKw * YIELD_KWH_PER_KWP_DAY * solarFactor * 30);
   let html = `Tổng: <b>${state.strings.length} chuỗi</b> · <b>${nPanels} tấm</b> · <span class="kw-value">≈ ${fmtKw(totalKw)} kWp</span>`;
   if (nPanels > 0) {
     html += ` · <span style="font-weight:700;color:#1b7a4b;background:#eafaf1;padding:1px 6px;border-radius:6px;border:1px solid #8fd9b0">≈ ${monthlyKwh.toLocaleString("vi-VN")} kWh/tháng</span>`;
+    html += ` · <span style="font-size:11px;font-weight:600;color:#0369a1;background:#f0f9ff;padding:1px 6px;border-radius:6px;border:1px solid #bae6fd">Đón nắng: ${(solarFactor * 100).toFixed(0)}%</span>`;
   }
   if (sel) html += `<br>Đang chọn chuỗi ${sel.id}: vị trí <b>${sel.cx.toFixed(1)}, ${sel.cy.toFixed(1)}</b> m`;
   // sức chứa của mái đang nhắm tới — để người dùng thấy trước khi bấm Thêm
@@ -2208,6 +2524,12 @@ function renderSummary() {
     if (!slope) continue;
     const lay = layoutSlots(s.count, s.dir, slope);
     if (!lay.fits) html += `<br>⚠ Chuỗi ${s.id}: ${slope.label} chỉ vừa <b>${lay.capacity}</b> tấm, đang đặt <b>${s.count}</b>`;
+  }
+
+  // Cảnh báo vi phạm hành lang an toàn gió bão (setback 0.40m)
+  const setbackBad = checkSetbackViolations();
+  if (setbackBad.length > 0) {
+    html += `<div style="margin-top:6px;padding:6px 8px;background:#fff1f0;border-radius:6px;border:1px solid #ffa39e;color:#cf1322;font-size:11.5px">⚠️ <b>Hành lang gió bão:</b> Chuỗi <b>${setbackBad.join(", ")}</b> đang đặt sát mép mái (&lt; 0.40m). Khuyên lùi sâu vào trong để chống giông lốc theo tiêu chuẩn xây dựng.</div>`;
   }
   $("summary").innerHTML = html;
   renderRackBOM();
@@ -2254,6 +2576,10 @@ function collectState() {
     tumW: state.tumW ?? 2.8, tumL: state.tumL ?? 3.5, tumH: state.tumH ?? 2.4,
     tumX: state.tumX, tumZ: state.tumZ,
     showTuongBao: !!state.showTuongBao,
+    showBonNuoc: !!state.showBonNuoc,
+    bonNuocType: state.bonNuocType === "dung" ? "dung" : "nam",
+    bonNuocX: state.bonNuocX, bonNuocZ: state.bonNuocZ,
+    showSetback: state.showSetback !== false,
     newCount: state.newCount, dirChoice: state.dirChoice, slopeKey: state.slopeKey,
     strings: state.strings.map(s => ({
       slopeKey: s.slopeKey, count: s.count, dir: s.dir, rot: s.rot,
@@ -2287,6 +2613,11 @@ function applyState(d) {
   state.tumX = (d.tumX != null && Number.isFinite(Number(d.tumX))) ? Number(d.tumX) : null;
   state.tumZ = (d.tumZ != null && Number.isFinite(Number(d.tumZ))) ? Number(d.tumZ) : null;
   state.showTuongBao = !!d.showTuongBao;
+  state.showBonNuoc = !!d.showBonNuoc;
+  state.bonNuocType = d.bonNuocType === "dung" ? "dung" : "nam";
+  state.bonNuocX = (d.bonNuocX != null && Number.isFinite(Number(d.bonNuocX))) ? Number(d.bonNuocX) : null;
+  state.bonNuocZ = (d.bonNuocZ != null && Number.isFinite(Number(d.bonNuocZ))) ? Number(d.bonNuocZ) : null;
+  state.showSetback = d.showSetback !== false;
   state.newCount = Math.round(clampNum(d.newCount, 1, 60, 9));
   state.dirChoice = d.dirChoice === "ngang" ? "ngang" : "doc";
   state.slopeKey = validKeys.has(d.slopeKey) ? d.slopeKey : null;
@@ -2353,11 +2684,14 @@ function syncUIFromState() {
   $("rackHRange").value = state.rackH;
   $("rackHVal").textContent = state.rackH.toFixed(2) + " m" + (state.rackH >= 1.2 ? " (Giàn cao sân thượng)" : " (Khung tiêu chuẩn)");
   $("rackTiltRange").value = state.rackTilt; $("rackTiltVal").textContent = state.rackTilt + "°";
+  syncOptTiltBadge();
   const spVal = state.rackSpacing ?? 0.6;
   $("rackSpacingRange").value = spVal;
   $("rackSpacingVal").textContent = spVal.toFixed(2) + " m" + (spVal >= 1.0 ? " (Khoảng cách chống bóng che)" : " (Lối đi bảo trì chuẩn)");
   $("tumThangCheck").checked = !!state.showTumThang;
   syncTumControls();
+  syncBonNuocControls();
+  if ($("setbackCheck")) $("setbackCheck").checked = state.showSetback !== false;
   renderRackBOM();
   $("tuongBaoCheck").checked = !!state.showTuongBao;
   $("angleRange").value = state.houseAngle; $("angleVal").textContent = state.houseAngle + "° · " + getDirLabel(state.houseAngle);
@@ -2514,7 +2848,9 @@ function exportCSV() {
   }
   push([]);
   push(["Tổng cộng", `${state.strings.length} chuỗi`, `${total} tấm`, `${fmtKw(kwOf(total))} kWp`]);
-  push(["Sản lượng dự kiến", `${Math.round(kwOf(total) * YIELD_KWH_PER_KWP_DAY * 30)} kWh/tháng`]);
+  const sf = calcSolarFactor();
+  const monthlyKwh = Math.round(kwOf(total) * YIELD_KWH_PER_KWP_DAY * sf * 30);
+  push(["Sản lượng dự kiến", `${monthlyKwh} kWh/tháng (Đón quang năng ${(sf * 100).toFixed(0)}%)`]);
   if (state.mount === "khungsat") {
     const bom = calcRackBOM();
     push([]);
@@ -2594,9 +2930,11 @@ function updateCustomFields() {
     const hasFlat = state.roofType === "bang" || state.roofType === "hai_doc_bang";
     $("tumThangField").style.display = hasFlat ? "flex" : "none";
     $("tuongBaoField").style.display = state.roofType === "bang" ? "flex" : "none";
+    if ($("bonNuocField")) $("bonNuocField").style.display = hasFlat ? "flex" : "none";
     $("tumThangCheck").checked = !!state.showTumThang;
     $("tuongBaoCheck").checked = !!state.showTuongBao;
     syncTumControls();
+    syncBonNuocControls();
   }
 }
 $("rackHRange").addEventListener("input", () => {
@@ -2612,8 +2950,21 @@ $("rackTiltRange").addEventListener("input", () => {
   $("rackTiltVal").textContent = state.rackTilt + "°";
   rebuildStringGroups();
   renderSummary();
+  syncOptTiltBadge();
   scheduleHistory();
 });
+if ($("optTiltBtn")) {
+  $("optTiltBtn").onclick = () => {
+    state.rackTilt = 13;
+    $("rackTiltRange").value = 13;
+    $("rackTiltVal").textContent = "13°";
+    rebuildStringGroups();
+    renderSummary();
+    syncOptTiltBadge();
+    scheduleHistory();
+    notify("Đã đặt góc nghiêng 13° tối ưu đón quang năng cao nhất tại Việt Nam (hướng Nam).", "ok");
+  };
+}
 $("rackSpacingRange").addEventListener("input", () => {
   state.rackSpacing = parseFloat($("rackSpacingRange").value);
   const desc = state.rackSpacing >= 1.0 ? " (Khoảng cách chống bóng che)" : " (Lối đi bảo trì chuẩn)";
@@ -2686,6 +3037,55 @@ $("tuongBaoCheck").addEventListener("change", (e) => {
   refreshAll();
   scheduleHistory();
 });
+if ($("bonNuocCheck")) {
+  $("bonNuocCheck").addEventListener("change", (e) => {
+    state.showBonNuoc = e.target.checked;
+    buildHouse();
+    syncBonNuocControls();
+    refreshAll();
+    scheduleHistory();
+  });
+}
+if ($("bonTypeNam")) {
+  $("bonTypeNam").onclick = () => {
+    state.bonNuocType = "nam";
+    buildHouse();
+    syncBonNuocControls();
+    refreshAll();
+    scheduleHistory();
+  };
+}
+if ($("bonTypeDung")) {
+  $("bonTypeDung").onclick = () => {
+    state.bonNuocType = "dung";
+    buildHouse();
+    syncBonNuocControls();
+    refreshAll();
+    scheduleHistory();
+  };
+}
+if ($("bonNuocXRange")) {
+  $("bonNuocXRange").addEventListener("input", () => {
+    state.bonNuocX = parseFloat($("bonNuocXRange").value);
+    buildHouse();
+    scheduleHistory();
+  });
+}
+if ($("bonNuocZRange")) {
+  $("bonNuocZRange").addEventListener("input", () => {
+    state.bonNuocZ = parseFloat($("bonNuocZRange").value);
+    buildHouse();
+    scheduleHistory();
+  });
+}
+if ($("setbackCheck")) {
+  $("setbackCheck").addEventListener("change", (e) => {
+    state.showSetback = e.target.checked;
+    buildHouse();
+    refreshAll();
+    scheduleHistory();
+  });
+}
 $("restorePanelsBtn").addEventListener("click", () => {
   const str = state.strings.find(s => s.id === state.selectedId);
   if (!str) return;
@@ -3070,7 +3470,7 @@ function watermarkInfo() {
     ["Công suất", `≈ ${fmtKw(kw)} kWp`],
     ["Kích thước mái", `${state.houseW} × ${state.houseL} m (${roof ? roof.label : "—"})`],
     ["Loại lắp đặt", mountText],
-    ["Sản lượng dự kiến", `≈ ${Math.round(kw * YIELD_KWH_PER_KWP_DAY * 30).toLocaleString("vi-VN")} kWh/tháng`],
+    ["Sản lượng dự kiến", `≈ ${Math.round(kw * YIELD_KWH_PER_KWP_DAY * calcSolarFactor() * 30).toLocaleString("vi-VN")} kWh/tháng (Đón nắng ${(calcSolarFactor() * 100).toFixed(0)}%)`],
   ];
 }
 function roundRectPath(ctx, x, y, w, h, r) {
@@ -3282,7 +3682,8 @@ function exportPDF() {
   const totalKw = kwOf(totalPanels);
   $("pTotalPanels").textContent = `${totalPanels} tấm`;
   $("pTotalKw").textContent = `≈ ${fmtKw(totalKw)} kWp`;
-  $("pMonthlyYield").textContent = `≈ ${Math.round(totalKw * YIELD_KWH_PER_KWP_DAY * 30).toLocaleString("vi-VN")} kWh/tháng`;
+  const sf = calcSolarFactor();
+  $("pMonthlyYield").textContent = `≈ ${Math.round(totalKw * YIELD_KWH_PER_KWP_DAY * sf * 30).toLocaleString("vi-VN")} kWh/tháng (Đón quang năng: ${(sf * 100).toFixed(0)}%)`;
   $("pTotalStrings").textContent = `${state.strings.length} chuỗi`;
 
   const tbody = $("pStringTableBody");
@@ -3570,6 +3971,7 @@ window.__solar = {
   state, getSlopes: () => slopes, THREE, renderer, scene, camera, controls,
   layoutSlots, placedPanels, roofCapacity, roofUsed, planPlacement, repackSlope, addString, notify,
   collectState, applyState, undo, redo, exportCSV, exportPDF, setCameraView, shareURL,
+  refreshAll, buildHouse, calcSolarFactor, checkSetbackViolations,
   getHistory: () => ({ hist, histIdx }),
   textures: () => renderer.info.memory,
 };
