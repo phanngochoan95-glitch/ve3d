@@ -942,9 +942,15 @@ function truncatedGable(W, L, wallH, angleDeg, midPct, ridgePct, over) {
   });
   // bịt 2 đầu hông hình thang (mép dải bằng lệch theo); 2 tam giác phủ kín mặt ngũ giác
   const w2 = W / 2 - 0.02, l2 = L / 2, tY = topY - 0.02;
+  // như addGableCaps: winding tam giác phải quay normal RA NGOÀI theo từng đầu (z âm/đôi dương)
   for (const zz of [-l2, l2]) {
-    extras.push(triCap([w2, wallH, zz], [right, tY, zz], [left, tY, zz]));
-    extras.push(triCap([-w2, wallH, zz], [left, tY, zz], [w2, wallH, zz]));
+    if (zz < 0) {
+      extras.push(triCap([right, tY, zz], [w2, wallH, zz], [left, tY, zz]));   // đầu Bắc: đảo đỉnh → normal -Z
+      extras.push(triCap([-w2, wallH, zz], [left, tY, zz], [w2, wallH, zz]));  // đã đúng chiều -Z
+    } else {
+      extras.push(triCap([w2, wallH, zz], [right, tY, zz], [left, tY, zz]));   // đã đúng chiều +Z
+      extras.push(triCap([w2, wallH, zz], [left, tY, zz], [-w2, wallH, zz]));  // đầu Nam: đảo đỉnh → normal +Z
+    }
   }
   res.handle = { type: "flat", x: xc, y: topY, w: F, d: uLen };
   return res;
@@ -965,8 +971,10 @@ function triCap(p1, p2, apex) {
 function addGableCaps(parent, fp) {
   const w2 = fp.w / 2 - 0.02, l2 = fp.l / 2, h = fp.wallH, r = fp.wallH + fp.ridgeH - 0.02;
   const dx = fp.dx || 0;
-  parent.add(triCap([fp.cx - w2, h, fp.cz - l2], [fp.cx + w2, h, fp.cz - l2], [fp.cx + dx, r, fp.cz - l2]));
-  parent.add(triCap([fp.cx - w2, h, fp.cz + l2], [fp.cx + w2, h, fp.cz + l2], [fp.cx + dx, r, fp.cz + l2]));
+  // tam giác chỉ hiện MỘT phía (material 1 mặt): winding phải quay normal RA NGOÀI nhà,
+  // nếu không bịt hông sẽ bị WebGL cắt mặt → nhìn từ đầu Bắc thấy hở tam giác trời
+  parent.add(triCap([fp.cx + w2, h, fp.cz - l2], [fp.cx - w2, h, fp.cz - l2], [fp.cx + dx, r, fp.cz - l2])); // đầu Bắc: đảo đỉnh
+  parent.add(triCap([fp.cx - w2, h, fp.cz + l2], [fp.cx + w2, h, fp.cz + l2], [fp.cx + dx, r, fp.cz + l2])); // đầu Nam: giữ nguyên
 }
 // La bàn trên nền — phong cách bản vẽ kỹ thuật: vòng mảnh + vạch chia + cung đỏ đánh dấu Bắc,
 // chữ 4 hướng đặt NGOÀI vòng nên không bị nhà che. Nằm trong scene (không thuộc houseGroup)
@@ -3559,7 +3567,7 @@ renderer.setAnimationLoop(() => {
 });
 // debug: xem nhanh trạng thái từ console + kiểm tra sức chứa mái
 window.__solar = {
-  state, getSlopes: () => slopes, THREE, renderer, scene,
+  state, getSlopes: () => slopes, THREE, renderer, scene, camera, controls,
   layoutSlots, placedPanels, roofCapacity, roofUsed, planPlacement, repackSlope, addString, notify,
   collectState, applyState, undo, redo, exportCSV, exportPDF, setCameraView, shareURL,
   getHistory: () => ({ hist, histIdx }),
