@@ -265,7 +265,7 @@
             </div>
             <input type="range" id="rackTiltRange" min="10" max="25" step="1" value="15" aria-label="Góc nghiêng khung sắt" />
             <button type="button" id="optTiltBtn" style="margin-top:6px;width:100%;font-size:11.5px;padding:4px 8px;border-radius:6px;border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:4px">
-              📐 Đặt góc nghiêng tối ưu đón nắng VN (13°)
+              📐 Góc nghiêng tối ưu ≈13° (trung bình VN — kèm hướng Nam)
             </button>
           </div>
           <div id="rackSpacingField" style="margin-top:10px">
@@ -450,9 +450,20 @@
           <div style="font-size:10.5px;color:#4a5568;margin-top:6px;font-style:italic">💡 Nhấp &amp; kéo trực tiếp bồn nước trên canvas 3D để di chuyển. Giàn pin sẽ tự động né vùng này.</div>
         </div>
         <div class="exp-row" id="setbackField" style="margin-top:6px">
-          <span>Hành lang an toàn gió bão (viền 0.4m mép mái)</span>
+          <span>Hành lang an toàn gió bão (mái phẳng lùi ≥0.4m — giảm sức chứa)</span>
           <input type="checkbox" id="setbackCheck" checked aria-label="Bật đường biên an toàn mép mái" />
         </div>
+      </details>
+
+      <details class="field" id="elecField">
+        <summary>⚡ Kiểm tra điện chuỗi (Voc / MPPT)</summary>
+        <div style="padding:8px 2px;display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;color:#36424e">
+          <div><label style="display:block;font-size:10px;color:#718096">Voc tấm (V)</label><input type="number" id="panelVocInput" step="0.01" min="1" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
+          <div><label style="display:block;font-size:10px;color:#718096">Vmp tấm (V)</label><input type="number" id="panelVmpInput" step="0.01" min="1" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
+          <div><label style="display:block;font-size:10px;color:#718096">MPPT min (V)</label><input type="number" id="mpptMinInput" step="5" min="0" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
+          <div><label style="display:block;font-size:10px;color:#718096">MPPT max (V)</label><input type="number" id="mpptMaxInput" step="5" min="0" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
+        </div>
+        <div style="font-size:10.5px;color:#718096;padding:2px 2px 0">Mặc định datasheet LONGi LR7-72HGD 620M (Voc 52.66V / Vmp 44.33V, hệ số nhiệt Voc −0.30%/°C). Kiểm tra: Voc lạnh = n×Voc×1.05 ≤ MPPT max · Vmp nóng = n×Vmp×0.88 ≥ MPPT min.</div>
       </details>
 
       <details class="field" id="ioField" open>
@@ -508,6 +519,8 @@
         <tr><td style="color:#666; padding: 3px 0;">Cách lắp đặt:</td><td style="font-weight:600; text-align:right" id="pMount">-</td></tr>
         <tr><td style="color:#666; padding: 3px 0;">Hướng nhà:</td><td style="font-weight:600; text-align:right" id="pHouseAngle">-</td></tr>
         <tr><td style="color:#666; padding: 3px 0;">Khoảng cách mép mái:</td><td style="font-weight:600; text-align:right" id="pEdgeMargin">-</td></tr>
+        <tr><td style="color:#666; padding: 3px 0;">Kiểm tra điện chuỗi:</td><td style="font-weight:600; text-align:right" id="pElecCheck">-</td></tr>
+        <tr id="pShadingRow" style="display:none"><td style="color:#666; padding: 3px 0;">Suy hao che bóng (đông chí):</td><td style="font-weight:600; text-align:right; color:#c2410c" id="pShadingNote">-</td></tr>
       </table>
     </div>
 
@@ -601,7 +614,11 @@ const DEFAULTS = {
   bonNuocType: "nam",   // "nam" (bồn nằm ngang) hoặc "dung" (bồn đứng)
   bonNuocX: null,       // vị trí tương đối X (m) trên sàn mái; null = tính theo góc sau-phải
   bonNuocZ: null,       // vị trí tương đối Z (m) trên sàn mái; null = tính theo góc sau-phải
-  showSetback: true,    // đường biên an toàn mép mái (hành lang an toàn gió bão 0.40m)
+  showSetback: false,   // hành lang an toàn gió bão 0.40m (mặc định TẮT: bật sẽ tự lùi mép MÁI PHẲNG ≥0.40m làm giảm sức chứa; bật khi khách yêu cầu chuẩn chống bão)
+  mpptMin: 150,         // cửa sổ MPPT inverter (V) — chỉnh theo datasheet inverter
+  mpptMax: 850,         // MPPT max (V) — Voc lạnh của chuỗi không được vượt
+  panelVoc: 52.66,      // Voc tấm (V) — datasheet LONGi LR7-72HGD 620M (2023-09 V05)
+  panelVmp: 44.33,      // Vmp tấm (V) — datasheet LONGi LR7-72HGD 620M
 };
 const state = {
   ...DEFAULTS,
@@ -1084,26 +1101,37 @@ function getTumPos(W, L, tumW, tumL) {
   return { x, z, maxOffsetW, maxOffsetL };
 }
 
-// Vị trí bồn nước Inox hợp lệ trên mặt sàn mái bằng
-function getBonNuocPos(W, L) {
+// Y mặt phẳng mái phẳng (slab mái bằng / dải bằng giữa) — lấy từ slope hiện hành thay vì hardcode
+function flatRoofY() {
+  const s = slopeByKey("bang-giua") || slopeByKey("bang");
+  return s ? s.origin.y : state.wallH + 0.45;
+}
+// Vị trí bồn nước Inox hợp lệ — biên theo MÉP MÁI PHẲNG (mái 2 dốc + bằng: dải bằng giữa,
+// không phải toàn bộ bìa nhà; toạ độ vẫn là toạ độ NHÀ, kẹp tương đối theo tâm dải)
+function getBonNuocPos() {
   const isDung = state.bonNuocType === "dung";
-  const bW = isDung ? 1.3 : 1.3;
-  const bL = isDung ? 1.3 : 2.0;
-  const maxOffsetW = Math.max(0, (W - bW) / 2 - 0.25);
-  const maxOffsetL = Math.max(0, (L - bL) / 2 - 0.25);
-  const defaultX = W / 2 - bW / 2 - 0.35; // góc sau-phải mặc định (đối xứng tum thang sau-trái)
-  const defaultZ = -L / 2 + bL / 2 + 0.35;
-  const x = state.bonNuocX != null ? THREE.MathUtils.clamp(state.bonNuocX, -maxOffsetW, maxOffsetW) : defaultX;
-  const z = state.bonNuocZ != null ? THREE.MathUtils.clamp(state.bonNuocZ, -maxOffsetL, maxOffsetL) : defaultZ;
-  return { x, z, maxOffsetW, maxOffsetL, bW, bL };
+  const bW = 1.3;
+  const bL = isDung ? 1.3 : 2.7; // bồn nằm: thân 1.6 + 2 chỏm cầu bán nguyệt 0.55 mỗi đầu (đo bbox mesh)
+  const flat = slopeByKey("bang-giua") || slopeByKey("bang");
+  const offX = flat ? flat.origin.x : 0;
+  const offZ = flat ? flat.origin.z : 0;
+  const uLen = flat ? flat.uLen : state.houseW;
+  const vLen = flat ? flat.vLen : state.houseL;
+  const maxOffsetW = Math.max(0, uLen / 2 - bW / 2 - 0.25);
+  const maxOffsetL = Math.max(0, vLen / 2 - bL / 2 - 0.25);
+  const defaultX = offX + uLen / 2 - bW / 2 - 0.35; // góc sau-phải TRÊN MÁI PHẲNG (đối xứng tum thang sau-trái)
+  const defaultZ = offZ - vLen / 2 + bL / 2 + 0.35;
+  const x = state.bonNuocX != null ? offX + THREE.MathUtils.clamp(state.bonNuocX - offX, -maxOffsetW, maxOffsetW) : defaultX;
+  const z = state.bonNuocZ != null ? offZ + THREE.MathUtils.clamp(state.bonNuocZ - offZ, -maxOffsetL, maxOffsetL) : defaultZ;
+  return { x, z, maxOffsetW, maxOffsetL, bW, bL, offX, offZ };
 }
 
 // Dựng mô hình 3D Bồn nước Inox (Téc nước Sơn Hà / Tân Á Đại Thành 1500L-2000L)
 function buildBonNuocMesh(W, L) {
-  const { x, z } = getBonNuocPos(W, L);
+  const { x, z } = getBonNuocPos();
   const grp = new THREE.Group();
   grp.userData.isBonNuoc = true;
-  const roofY = state.wallH + (state.roofType === "bang" ? 0.45 : 0.25);
+  const roofY = flatRoofY(); // mặt mái phẳng thật (trước đây hardcode wallH+0.25 → chìm ~1m dưới dải bằng)
   const isDung = state.bonNuocType === "dung";
 
   const inoxMat = new THREE.MeshStandardMaterial({
@@ -1174,34 +1202,28 @@ function buildBonNuocMesh(W, L) {
   return grp;
 }
 
-// Kiểm tra danh sách chuỗi pin vi phạm khoảng lùi mép mái (< 0.40m)
+// Kiểm tra chuỗi pin vi phạm hành lang an toàn gió bão — chỉ áp MÁI PHẲNG khi bật tính năng
+// (mái dốc áp kẹp mép 0.2–0.3m là chuẩn thi công VN, không dùng hành lang 0.40m này)
 function checkSetbackViolations() {
-  const d = 0.38; // ngưỡng kiểm tra sát mép (m)
+  if (state.showSetback === false) return [];
+  const d = SETBACK_M;
   const bad = [];
   for (const s of state.strings) {
     const slope = slopeByKey(s.slopeKey);
-    if (!slope) continue;
+    if (!slope || (slope.key !== "bang" && slope.key !== "bang-giua")) continue;
     const lay = layoutSlots(s.count, s.dir, slope);
     const e = rotExtents(lay, s.rot);
-    if (slope.key === "bang") {
-      const W = state.houseW, L = state.houseL;
-      if (Math.abs(s.cx) + e.hu > W / 2 - d || Math.abs(s.cy) + e.hv > L / 2 - d) {
-        bad.push(s.id);
-      }
-    } else {
-      const uLen = slope.uLen, vLen = slope.vLen;
-      if (Math.abs(s.cx) + e.hu > uLen / 2 - d || s.cy - e.hv < d || s.cy + e.hv > vLen - d) {
-        bad.push(s.id);
-      }
+    if (Math.abs(s.cx) + e.hu > slope.uLen / 2 - d + 1e-6 || Math.abs(s.cy) + e.hv > slope.vLen / 2 - d + 1e-6) {
+      bad.push(s.id);
     }
   }
   return bad;
 }
 
-// Vẽ đường biên an toàn mép mái (Hành lang an toàn gió bão 0.40m)
+// Vẽ đường biên an toàn mép mái — chỉ trên MÁI PHẲNG khi bật (mái dốc không vẽ để tránh nét lơ lửng)
 function addSetbackLines(parent, slopesList) {
   if (state.showSetback === false) return;
-  const d = 0.40; // hành lang an toàn gió bão 0.40m
+  const d = SETBACK_M;
   const violations = checkSetbackViolations();
   const hasViolation = violations.length > 0;
   const lineMat = new THREE.LineDashedMaterial({
@@ -1212,30 +1234,14 @@ function addSetbackLines(parent, slopesList) {
 
   for (const slope of slopesList) {
     if (!slope || !slope.origin || !slope.u || !slope.v) continue;
-    const points = [];
-    if (slope.key === "bang") {
-      const W = state.houseW, L = state.houseL;
-      if (W <= 2 * d + 0.2 || L <= 2 * d + 0.2) continue;
-      const hw = W / 2 - d, hl = L / 2 - d;
-      const y = slope.origin.y + 0.008;
-      points.push(new THREE.Vector3(-hw, y, -hl));
-      points.push(new THREE.Vector3(hw, y, -hl));
-      points.push(new THREE.Vector3(hw, y, hl));
-      points.push(new THREE.Vector3(-hw, y, hl));
-      points.push(new THREE.Vector3(-hw, y, -hl));
-    } else {
-      const uLen = slope.uLen, vLen = slope.vLen;
-      if (uLen <= 2 * d + 0.2 || vLen <= 2 * d + 0.2) continue;
-      const hu = uLen / 2 - d;
-      const v0 = d, v1 = vLen - d;
-      const uDir = slope.u, vDir = slope.v, nDir = slope.n, orig = slope.origin;
-      const to3D = (u, v) => orig.clone().addScaledVector(uDir, u).addScaledVector(vDir, v).addScaledVector(nDir, 0.008);
-      points.push(to3D(-hu, v0));
-      points.push(to3D(hu, v0));
-      points.push(to3D(hu, v1));
-      points.push(to3D(-hu, v1));
-      points.push(to3D(-hu, v0));
-    }
+    if (slope.key !== "bang" && slope.key !== "bang-giua") continue; // chỉ mái phẳng
+    const uLen = slope.uLen, vLen = slope.vLen;
+    if (uLen <= 2 * d + 0.2 || vLen <= 2 * d + 0.2) continue;
+    const hu = uLen / 2 - d;
+    const v0 = -vLen / 2 + d, v1 = vLen / 2 - d; // toạ độ slope CĂN GIỮA (trước đây dùng quy ước từ-mép-làm-gốc → đường biên tràn ra ngoài mái)
+    const uDir = slope.u, vDir = slope.v, nDir = slope.n, orig = slope.origin;
+    const to3D = (u, v) => orig.clone().addScaledVector(uDir, u).addScaledVector(vDir, v).addScaledVector(nDir, 0.008);
+    const points = [to3D(-hu, v0), to3D(hu, v0), to3D(hu, v1), to3D(-hu, v1), to3D(-hu, v0)];
     const geo = new THREE.BufferGeometry().setFromPoints(points);
     const line = new THREE.Line(geo, lineMat);
     line.computeLineDistances();
@@ -1279,6 +1285,7 @@ function buildHouse() {
   // mái
   for (const s of parts.slopes) houseGroup.add(s.mesh);
   for (const ex of parts.extras || []) houseGroup.add(ex);
+  slopes = parts.slopes; // gán sớm để tum/bồn nước/setback dùng slopeByKey trong lần build này
   tumMeshGroup = null;
   // tường bao & tum thang (trên mái bằng)
   if ((state.roofType === "bang" || state.roofType === "hai_doc_bang") && state.showTumThang) {
@@ -1286,7 +1293,7 @@ function buildHouse() {
     const tumL = Math.min(state.tumL ?? 3.5, L - 0.6);
     const tumH = state.tumH ?? 2.4;
     const { x: tumX, z: tumZ } = getTumPos(W, L, tumW, tumL);
-    const roofY = state.wallH + (state.roofType === "bang" ? 0.45 : 0.25);
+    const roofY = flatRoofY(); // mặt dải bằng thật (mái 2 dốc + bằng: origin.y của bang-giua, trước đây hardcode wallH+0.25 làm tum/bồn chìm ~1m)
 
     const tumGrp = new THREE.Group();
     tumGrp.userData.isTumThang = true;
@@ -1323,22 +1330,23 @@ function buildHouse() {
   }
   if (state.roofType === "bang" && state.showTuongBao) {
     const wallThick = 0.18, parapetH = 0.55;
-    const roofY = state.wallH + 0.45;
+    const roofY = flatRoofY();
     for (const zSide of [-1, 1]) {
       const pw = new THREE.Mesh(new THREE.BoxGeometry(W + 0.3, parapetH, wallThick), wallMat());
       pw.position.set(0, roofY + parapetH / 2, zSide * (L + 0.3 - wallThick) / 2);
       pw.castShadow = pw.receiveShadow = true;
+      pw.userData.isTuongBao = true; // tham gia raycast bóng đổ (K2-mini)
       houseGroup.add(pw);
     }
     for (const xSide of [-1, 1]) {
       const pw = new THREE.Mesh(new THREE.BoxGeometry(wallThick, parapetH, L + 0.3 - 2 * wallThick), wallMat());
       pw.position.set(xSide * (W + 0.3 - wallThick) / 2, roofY + parapetH / 2, 0);
       pw.castShadow = pw.receiveShadow = true;
+      pw.userData.isTuongBao = true; // tham gia raycast bóng đổ (K2-mini)
       houseGroup.add(pw);
     }
   }
   if (parts.slab) slabMesh = parts.slopes[0].mesh;
-  slopes = parts.slopes;
   // Đường biên an toàn mép mái (Hành lang an toàn gió bão 0.40m)
   addSetbackLines(houseGroup, slopes);
   houseApex = parts.handle ? { x: parts.handle.x, y: parts.handle.y }
@@ -1467,11 +1475,19 @@ function placedPanels(str) {
   const dis = Array.isArray(str.disabled) ? str.disabled.filter(i => i < base).length : 0;
   return Math.max(0, base - dis);
 }
+// mép mái hiệu quả: khi bật hành lang an toàn gió bão (chỉ áp MÁI PHẲNG), tự lùi tối thiểu 0.40 m
+const SETBACK_M = 0.40;
+function slopeMargin(slope) {
+  if (state.showSetback && slope && (slope.key === "bang" || slope.key === "bang-giua")) {
+    return Math.max(state.edgeMargin, SETBACK_M);
+  }
+  return state.edgeMargin;
+}
 function layoutSlots(count, dir, slope) {
   const { pL, pW } = panelDims();
   const fV = dir === "doc" ? pL : pW;  // kích thước theo hướng dốc
   const fU = dir === "doc" ? pW : pL;  // kích thước ngang đỉnh
-  const gap = 0.02, margin = state.edgeMargin;
+  const gap = 0.02, margin = slopeMargin(slope);
   const pitchU = fU + gap, pitchV = fV + gap;
   // chuỗi phải nằm gọn trong mái: giới hạn cả số hàng (theo dốc) lẫn số cột (theo đỉnh)
   const maxRows = Math.max(1, Math.floor((slope.vLen - 2 * margin + gap) / (fV + gap)));
@@ -1553,19 +1569,19 @@ function otherFootprints(slope, exceptId) {
     .map(s => stringFootprint(slope, s));
 
   // Thêm vùng cản của Tum Thang nếu ở mái bằng hoặc dải bằng
+  // (quy đổi sang hệ toạ độ MẶT MÁI của slope — dải bằng lệch tâm có origin.x ≠ 0)
   if ((state.roofType === "bang" || state.roofType === "hai_doc_bang") && state.showTumThang && (slope.key === "bang" || slope.key === "bang-giua")) {
     const W = state.houseW, L = state.houseL;
     const tumW = Math.min(state.tumW ?? 2.8, W - 0.6);
     const tumL = Math.min(state.tumL ?? 3.5, L - 0.6);
     const { x: tx, z: tz } = getTumPos(W, L, tumW, tumL);
-    fps.push({ cx: tx, cy: tz, hu: tumW / 2 + 0.15, hv: tumL / 2 + 0.15, isObstacle: true, name: "Tum thang" });
+    fps.push({ cx: tx - slope.origin.x, cy: tz - slope.origin.z, hu: tumW / 2 + 0.15, hv: tumL / 2 + 0.15, isObstacle: true, name: "Tum thang" });
   }
 
-  // Thêm vùng cản của Bồn nước Inox nếu bật
+  // Thêm vùng cản của Bồn nước Inox nếu bật (cùng quy đổi toạ độ như trên)
   if ((state.roofType === "bang" || state.roofType === "hai_doc_bang") && state.showBonNuoc && (slope.key === "bang" || slope.key === "bang-giua")) {
-    const W = state.houseW, L = state.houseL;
-    const { x: bx, z: bz, bW, bL } = getBonNuocPos(W, L);
-    fps.push({ cx: bx, cy: bz, hu: bW / 2 + 0.15, hv: bL / 2 + 0.15, isObstacle: true, name: "Bồn nước Inox" });
+    const { x: bx, z: bz, bW, bL } = getBonNuocPos();
+    fps.push({ cx: bx - slope.origin.x, cy: bz - slope.origin.z, hu: bW / 2 + 0.15, hv: bL / 2 + 0.15, isObstacle: true, name: "Bồn nước Inox" });
   }
 
   return fps;
@@ -1591,7 +1607,7 @@ function pointInRoof(slope, x, y, margin) {
 // khối tấm có nằm gọn trong mặt mái không (mái Nhật: xét bề rộng tại đúng hàng của tấm)
 // rot = 0 → kiểm tra từng hàng (chính xác với mái hình thang); rot ≠ 0 → khung bao xoay, xét 4 góc
 function insideRoof(slope, cx, cy, lay, rot = 0) {
-  const margin = state.edgeMargin;
+  const margin = slopeMargin(slope);
   if ((rot % 180) === 0) {
     if (lay.totalU > slope.uLen - 2 * margin + 1e-6) return false;
     if (lay.totalV > slope.vLen - 2 * margin + 1e-6) return false;
@@ -1618,7 +1634,7 @@ function insideRoof(slope, cx, cy, lay, rot = 0) {
 // tìm vị trí trống cho khối `lay` tấm: ưu tiên giữa mái rồi mới dạt ra (mái Nhật hẹp dần
 // lên đỉnh nên đặt lệch lên trên dễ tràn hông; quét từ giữa ra luôn chọn được chỗ rộng nhất)
 function findFreeSpot(slope, lay, rot = 0) {
-  const margin = state.edgeMargin, step = 0.08;
+  const margin = slopeMargin(slope), step = 0.08;
   const fps = otherFootprints(slope, null);
   const e = rotExtents(lay, rot);
   const sp = getRackSpacing(slope);
@@ -1948,7 +1964,7 @@ function updateSelectionVisual() {
 // kẹp vị trí khối tấm vào trong mặt mái (dùng chung khi dựng, kéo-thả, đổi hướng)
 // rot ≠ 0: dùng khung bao xoay (mái coi như hình chữ nhật, insideRoof sẽ kiểm tra lại góc)
 function clampSpot(slope, lay, cx, cy, rot = 0) {
-  const margin = state.edgeMargin;
+  const margin = slopeMargin(slope);
   if ((rot % 180) !== 0) {
     const e = rotExtents(lay, rot);
     const halfU = Math.max(0, slope.uLen / 2 - margin - e.hu);
@@ -2085,8 +2101,7 @@ renderer.domElement.addEventListener("pointerdown", (e) => {
   if (bonNuocGroup) {
     const bhits = raycaster.intersectObjects(bonNuocGroup.children, true);
     if (bhits.length) {
-      const roofY = state.wallH + (state.roofType === "bang" ? 0.45 : 0.25);
-      dragging = { type: "bonNuoc", planeY: roofY };
+      dragging = { type: "bonNuoc", planeY: flatRoofY() };
       controls.enabled = false;
       renderer.domElement.setPointerCapture(e.pointerId);
       return;
@@ -2129,10 +2144,9 @@ renderer.domElement.addEventListener("pointermove", (e) => {
     const p = new THREE.Vector3();
     if (raycaster.ray.intersectPlane(plane, p)) {
       houseGroup.worldToLocal(p);
-      const W = state.houseW, L = state.houseL;
-      const { maxOffsetW, maxOffsetL } = getBonNuocPos(W, L);
-      state.bonNuocX = THREE.MathUtils.clamp(p.x, -maxOffsetW, maxOffsetW);
-      state.bonNuocZ = THREE.MathUtils.clamp(p.z, -maxOffsetL, maxOffsetL);
+      const { maxOffsetW, maxOffsetL, offX, offZ } = getBonNuocPos();
+      state.bonNuocX = THREE.MathUtils.clamp(p.x, offX - maxOffsetW, offX + maxOffsetW);
+      state.bonNuocZ = THREE.MathUtils.clamp(p.z, offZ - maxOffsetL, offZ + maxOffsetL);
       buildHouse();
       syncBonNuocControls();
     }
@@ -2437,6 +2451,12 @@ function syncTumControls() {
   $("tumZRange").value = z.toFixed(2);
 }
 
+function syncElecControls() {
+  if ($("panelVocInput")) $("panelVocInput").value = Math.round((state.panelVoc ?? 52.66) * 100) / 100;
+  if ($("panelVmpInput")) $("panelVmpInput").value = Math.round((state.panelVmp ?? 44.33) * 100) / 100;
+  if ($("mpptMinInput")) $("mpptMinInput").value = state.mpptMin ?? 150;
+  if ($("mpptMaxInput")) $("mpptMaxInput").value = state.mpptMax ?? 850;
+}
 function syncBonNuocControls() {
   const isFlat = state.roofType === "bang" || state.roofType === "hai_doc_bang";
   if ($("bonNuocField")) $("bonNuocField").style.display = isFlat ? "flex" : "none";
@@ -2444,16 +2464,15 @@ function syncBonNuocControls() {
   if ($("bonNuocDetails")) $("bonNuocDetails").style.display = (isFlat && state.showBonNuoc) ? "block" : "none";
   if (!isFlat || !state.showBonNuoc) return;
 
-  const W = state.houseW, L = state.houseL;
-  const { x, z, maxOffsetW, maxOffsetL } = getBonNuocPos(W, L);
+  const { x, z, maxOffsetW, maxOffsetL, offX, offZ } = getBonNuocPos();
   if ($("bonNuocXRange")) {
-    $("bonNuocXRange").min = (-maxOffsetW).toFixed(2);
-    $("bonNuocXRange").max = (maxOffsetW).toFixed(2);
+    $("bonNuocXRange").min = (offX - maxOffsetW).toFixed(2);
+    $("bonNuocXRange").max = (offX + maxOffsetW).toFixed(2);
     $("bonNuocXRange").value = x.toFixed(2);
   }
   if ($("bonNuocZRange")) {
-    $("bonNuocZRange").min = (-maxOffsetL).toFixed(2);
-    $("bonNuocZRange").max = (maxOffsetL).toFixed(2);
+    $("bonNuocZRange").min = (offZ - maxOffsetL).toFixed(2);
+    $("bonNuocZRange").max = (offZ + maxOffsetL).toFixed(2);
     $("bonNuocZRange").value = z.toFixed(2);
   }
   const isDung = state.bonNuocType === "dung";
@@ -2485,6 +2504,27 @@ function calcSolarFactor() {
   return THREE.MathUtils.clamp(azFactor * tiltFactor, 0.78, 1.02);
 }
 
+// K4-mini: kiểm tra điện chuỗi — Voc lạnh không vượt MPPT max, Vmp nóng không tụt dưới MPPT min
+// (Voc lạnh = n×Voc×1.05 ứng Tmin ~10°C với hệ số nhiệt Voc −0.30%/°C; Vmp nóng = n×Vmp×0.88 ứng Tcell ~60°C)
+function stringElectricalCheck() {
+  const voc = Math.max(1, state.panelVoc ?? 52.66);
+  const vmp = Math.max(1, state.panelVmp ?? 44.33);
+  const hi = Math.max(1, state.mpptMax ?? 850);
+  const lo = Math.max(0, state.mpptMin ?? 150);
+  const overV = [], underV = [];
+  let worstV = 0;
+  for (const s of state.strings) {
+    const n = placedPanels(s);
+    if (n <= 0) continue;
+    const vocCold = Math.round(n * voc * 1.05);
+    const vmpHot = Math.round(n * vmp * 0.88);
+    worstV = Math.max(worstV, vocCold);
+    if (vocCold > hi) overV.push({ id: s.id, v: vocCold, n });
+    if (vmpHot < lo) underV.push({ id: s.id, v: vmpHot, n });
+  }
+  return { overV, underV, worstV };
+}
+
 function syncOptTiltBadge() {
   const badge = $("optTiltBadge");
   if (!badge) return;
@@ -2509,6 +2549,8 @@ function renderSummary() {
   if (nPanels > 0) {
     html += ` · <span style="font-weight:700;color:#1b7a4b;background:#eafaf1;padding:1px 6px;border-radius:6px;border:1px solid #8fd9b0">≈ ${monthlyKwh.toLocaleString("vi-VN")} kWh/tháng</span>`;
     html += ` · <span style="font-size:11px;font-weight:600;color:#0369a1;background:#f0f9ff;padding:1px 6px;border-radius:6px;border:1px solid #bae6fd">Đón nắng: ${(solarFactor * 100).toFixed(0)}%</span>`;
+    const shadePct = calcShadingLossPct();
+    if (shadePct > 0) html += ` · <span style="font-size:11px;font-weight:600;color:#7c2d12;background:#fff7ed;padding:1px 6px;border-radius:6px;border:1px solid #fed7aa">Che bóng (đông chí): ~${shadePct}%</span>`;
   }
   if (sel) html += `<br>Đang chọn chuỗi ${sel.id}: vị trí <b>${sel.cx.toFixed(1)}, ${sel.cy.toFixed(1)}</b> m`;
   // sức chứa của mái đang nhắm tới — để người dùng thấy trước khi bấm Thêm
@@ -2526,10 +2568,18 @@ function renderSummary() {
     if (!lay.fits) html += `<br>⚠ Chuỗi ${s.id}: ${slope.label} chỉ vừa <b>${lay.capacity}</b> tấm, đang đặt <b>${s.count}</b>`;
   }
 
-  // Cảnh báo vi phạm hành lang an toàn gió bão (setback 0.40m)
+  // Cảnh báo vi phạm hành lang an toàn gió bão (chỉ khi bật; áp mái phẳng)
   const setbackBad = checkSetbackViolations();
   if (setbackBad.length > 0) {
     html += `<div style="margin-top:6px;padding:6px 8px;background:#fff1f0;border-radius:6px;border:1px solid #ffa39e;color:#cf1322;font-size:11.5px">⚠️ <b>Hành lang gió bão:</b> Chuỗi <b>${setbackBad.join(", ")}</b> đang đặt sát mép mái (&lt; 0.40m). Khuyên lùi sâu vào trong để chống giông lốc theo tiêu chuẩn xây dựng.</div>`;
+  }
+  // K4-mini: cảnh báo Voc/MPPT — chống sai báo giá (chuỗi quá dài vượt cửa sổ điện áp inverter)
+  const elec = stringElectricalCheck();
+  if (elec.overV.length) {
+    html += `<div style="margin-top:6px;padding:6px 8px;background:#fff1f0;border-radius:6px;border:1px solid #ffa39e;color:#cf1322;font-size:11.5px">⚡️ <b>Voc vượt MPPT max:</b> chuỗi <b>${elec.overV.map(o => o.id).join(", ")}</b> — Voc lạnh ~<b>${Math.round(elec.worstV)} V</b> &gt; ${state.mpptMax ?? 850} V. Giảm số tấm nối tiếp hoặc dùng inverter 1500V DC.</div>`;
+  }
+  if (elec.underV.length) {
+    html += `<div style="margin-top:6px;padding:6px 8px;background:#fffbe6;border-radius:6px;border:1px solid #ffe58f;color:#ad6800;font-size:11.5px">⚡ <b>Vmp tụt dưới MPPT min:</b> chuỗi <b>${elec.underV.map(o => o.id).join(", ")}</b> — Vmp nóng ~${Math.min(...elec.underV.map(o => o.v))} V &lt; ${state.mpptMin ?? 150} V. Gộp thêm tấm vào chuỗi hoặc đổi inverter.</div>`;
   }
   $("summary").innerHTML = html;
   renderRackBOM();
@@ -2579,7 +2629,9 @@ function collectState() {
     showBonNuoc: !!state.showBonNuoc,
     bonNuocType: state.bonNuocType === "dung" ? "dung" : "nam",
     bonNuocX: state.bonNuocX, bonNuocZ: state.bonNuocZ,
-    showSetback: state.showSetback !== false,
+    showSetback: !!state.showSetback,
+    panelVoc: state.panelVoc ?? 52.66, panelVmp: state.panelVmp ?? 44.33,
+    mpptMin: state.mpptMin ?? 150, mpptMax: state.mpptMax ?? 850,
     newCount: state.newCount, dirChoice: state.dirChoice, slopeKey: state.slopeKey,
     strings: state.strings.map(s => ({
       slopeKey: s.slopeKey, count: s.count, dir: s.dir, rot: s.rot,
@@ -2617,7 +2669,11 @@ function applyState(d) {
   state.bonNuocType = d.bonNuocType === "dung" ? "dung" : "nam";
   state.bonNuocX = (d.bonNuocX != null && Number.isFinite(Number(d.bonNuocX))) ? Number(d.bonNuocX) : null;
   state.bonNuocZ = (d.bonNuocZ != null && Number.isFinite(Number(d.bonNuocZ))) ? Number(d.bonNuocZ) : null;
-  state.showSetback = d.showSetback !== false;
+  state.showSetback = !!d.showSetback;
+  state.panelVoc = clampNum(d.panelVoc, 1, 120, 52.66);
+  state.panelVmp = clampNum(d.panelVmp, 1, 120, 44.33);
+  state.mpptMin = clampNum(d.mpptMin, 0, 1500, 150);
+  state.mpptMax = clampNum(d.mpptMax, 0, 1500, 850);
   state.newCount = Math.round(clampNum(d.newCount, 1, 60, 9));
   state.dirChoice = d.dirChoice === "ngang" ? "ngang" : "doc";
   state.slopeKey = validKeys.has(d.slopeKey) ? d.slopeKey : null;
@@ -2691,7 +2747,8 @@ function syncUIFromState() {
   $("tumThangCheck").checked = !!state.showTumThang;
   syncTumControls();
   syncBonNuocControls();
-  if ($("setbackCheck")) $("setbackCheck").checked = state.showSetback !== false;
+  if ($("setbackCheck")) $("setbackCheck").checked = !!state.showSetback;
+  syncElecControls();
   renderRackBOM();
   $("tuongBaoCheck").checked = !!state.showTuongBao;
   $("angleRange").value = state.houseAngle; $("angleVal").textContent = state.houseAngle + "° · " + getDirLabel(state.houseAngle);
@@ -2851,6 +2908,14 @@ function exportCSV() {
   const sf = calcSolarFactor();
   const monthlyKwh = Math.round(kwOf(total) * YIELD_KWH_PER_KWP_DAY * sf * 30);
   push(["Sản lượng dự kiến", `${monthlyKwh} kWh/tháng (Đón quang năng ${(sf * 100).toFixed(0)}%)`]);
+  const shadePct = calcShadingLossPct();
+  push(["Suy hao che bóng", shadePct > 0 ? `~${shadePct}% (9h-15h ngày đông chí)` : "Không có vật cản"]);
+  const elec = stringElectricalCheck();
+  push(["Kiểm tra điện chuỗi", total > 0
+    ? (elec.overV.length
+      ? `⚠ Voc lạnh ~${Math.round(elec.worstV)}V vượt MPPT ${state.mpptMin ?? 150}-${state.mpptMax ?? 850}V (chuỗi ${elec.overV.map(o => o.id).join(", ")})`
+      : `Đạt — Voc lạnh tối đa ~${Math.round(elec.worstV)}V trong MPPT ${state.mpptMin ?? 150}-${state.mpptMax ?? 850}V`)
+    : "—"]);
   if (state.mount === "khungsat") {
     const bom = calcRackBOM();
     push([]);
@@ -3082,6 +3147,28 @@ if ($("setbackCheck")) {
   $("setbackCheck").addEventListener("change", (e) => {
     state.showSetback = e.target.checked;
     buildHouse();
+    refreshAll();
+    scheduleHistory();
+  });
+}
+// K4-mini: ô nhập thông số điện — đổi là tính lại cảnh báo Voc/MPPT
+const elecInputs = [
+  { id: "panelVocInput", key: "panelVoc", def: 52.66 },
+  { id: "panelVmpInput", key: "panelVmp", def: 44.33 },
+  { id: "mpptMinInput", key: "mpptMin", def: 150 },
+  { id: "mpptMaxInput", key: "mpptMax", def: 850 },
+];
+for (const { id, key, def } of elecInputs) {
+  const el = $(id);
+  if (!el) continue;
+  el.addEventListener("change", () => {
+    const v = parseFloat(el.value);
+    state[key] = Number.isFinite(v) ? Math.max(0, v) : def;
+    if (state.mpptMin > state.mpptMax) {
+      if (key === "mpptMin") state.mpptMax = state.mpptMin;
+      else if (key === "mpptMax") state.mpptMin = state.mpptMax;
+    }
+    syncElecControls();
     refreshAll();
     scheduleHistory();
   });
@@ -3327,12 +3414,63 @@ $("overlayToggleBtn").onclick = () => {
   $("overlayToggleBtn").textContent = ov.classList.contains("collapsed") ? "▸" : "▾";
 };
 
-// Tính ước tính tỷ lệ tổn thất bóng đổ (% Shading Derate do tum thang / tường bao)
+// Vị trí mặt trời theo giờ (cùng công thức updateSun); đông chí: mặt trời thấp hơn ~20° so với ngày thường
+function sunDirAt(hour, winterSolstice) {
+  const t = (hour - 6) / 12;
+  const az = t * Math.PI;
+  let alt = Math.sin(t * Math.PI) * THREE.MathUtils.degToRad(62);
+  if (winterSolstice) alt -= THREE.MathUtils.degToRad(20);
+  alt = Math.max(THREE.MathUtils.degToRad(8), alt);
+  return new THREE.Vector3(Math.cos(az) * Math.cos(alt), Math.sin(alt), Math.sin(az) * Math.cos(alt));
+}
+// K2-mini: % suy hao bóng đổ RAYCAST THẬT (thay heuristic +2.5%/+1.5%) — bắn tia từ mẫu điểm
+// trên từng chuỗi pin về mặt trời lúc 9h/12h/15h NGÀY ĐÔNG CHÍ (xấu nhất), đếm tỉ lệ bị
+// tum thang / bồn nước / tường bao che khuất. Chỉ chạy on-demand (payload/PDF/summary) + cache.
+let _shadeCache = { sig: "", val: 0 };
+function shadingSignature() {
+  const s = state.strings.map(st => `${st.slopeKey}:${st.cx.toFixed(2)},${st.cy.toFixed(2)},${st.rot},${placedPanels(st)}`).join("|");
+  return [state.roofType, state.mount, state.rackH, state.rackTilt, state.showTumThang, state.showBonNuoc,
+    state.bonNuocType, state.bonNuocX, state.bonNuocZ, state.showTuongBao, state.houseAngle, s].join(";");
+}
 function calcShadingLossPct() {
-  let loss = 0;
-  if (state.showTumThang) loss += 2.5; // Tum thang sân thượng gây che khuất xiên
-  if (state.showTuongBao) loss += 1.5; // Tường bao mái che nắng thấp
-  return Math.min(8.0, loss);
+  const sig = shadingSignature();
+  if (_shadeCache.sig === sig) return _shadeCache.val;
+  let val = 0;
+  const obstacles = [];
+  if (tumMeshGroup) obstacles.push(tumMeshGroup);
+  if (bonNuocGroup) obstacles.push(bonNuocGroup);
+  houseGroup.traverse(o => { if (o.userData && o.userData.isTuongBao) obstacles.push(o); });
+  if (obstacles.length && state.strings.length) {
+    const ray = new THREE.Raycaster();
+    const UP = new THREE.Vector3(0, 1, 0);
+    const angleRad = THREE.MathUtils.degToRad(state.houseAngle);
+    const lift = (state.mount === "khungsat") ? 0.25 : 0.06; // cao độ mặt tấm trên mặt mái
+    let blocked = 0, total = 0;
+    houseGroup.updateMatrixWorld(true);
+    for (const s of state.strings) {
+      const slope = slopeByKey(s.slopeKey);
+      if (!slope) continue;
+      const lay = layoutSlots(placedPanels(s), s.dir, slope);
+      if (!lay.slots.length) continue;
+      const slots = lay.slots, n = slots.length;
+      const idxs = n <= 5 ? slots.map((_, i) => i) : [0, Math.floor(n * 0.25), Math.floor(n * 0.5), Math.floor(n * 0.75), n - 1];
+      for (const h of [9, 12, 15]) {
+        const dW = sunDirAt(h, true); // hướng thế giới (houseGroup quay, mặt trời không quay)
+        for (const i of idxs) {
+          const slot = slots[i];
+          const p = stringOrigin(slope, s.cx + slot.x, s.cy + slot.y); // toạ độ LOCAL houseGroup
+          p.addScaledVector(slope.n, lift - 0.02);
+          houseGroup.localToWorld(p); // chuyển sang THẾ GIỚI để raycast khớp hướng mặt trời
+          ray.set(p, dW);
+          total++;
+          if (ray.intersectObjects(obstacles, true).length) blocked++;
+        }
+      }
+    }
+    if (total) val = Math.min(60, Math.round((blocked / total) * 1000) / 10);
+  }
+  _shadeCache = { sig, val };
+  return val;
 }
 
 // Chuẩn bị toàn bộ dữ liệu 3D (kWp, số tấm, BOM sắt thép, ảnh 3D snapshot, scene JSON)
@@ -3369,7 +3507,11 @@ function prepareBaoGiaPayload() {
     w: state.houseW,
     l: state.houseL,
     bom: bomSummary,
+    solarFactorPct: Math.round(calcSolarFactor() * 100), // hệ số đón nắng theo hướng×nghiêng — VCC dùng đối chiếu (nguồn sự thật sản lượng là bảng 63 tỉnh bên VCC)
     shadingLossPct: calcShadingLossPct(),
+    stringVocMaxV: (() => { const e = stringElectricalCheck(); return e.worstV ? Math.round(e.worstV) : null; })(),
+    mpptMin: state.mpptMin ?? 150,
+    mpptMax: state.mpptMax ?? 850,
     snapshot: primarySnapshot, // Tương thích ngược (1 ảnh)
     snapshots: snapshots,      // Bộ 4 ảnh phối cảnh chất lượng cao (dàn trang PDF)
     scene3d: JSON.stringify(collectState()),
@@ -3429,6 +3571,11 @@ function getBaoGiaUrl() {
   url.searchParams.set("bom", JSON.stringify(payload.bom));
   if (payload.shadingLossPct > 0) {
     url.searchParams.set("shading", payload.shadingLossPct);
+  }
+  url.searchParams.set("solar", payload.solarFactorPct); // % đón nắng (đồng bộ số liệu ve3d ↔ VCC)
+  if (payload.stringVocMaxV) {
+    url.searchParams.set("voc", payload.stringVocMaxV);
+    url.searchParams.set("mpptmax", payload.mpptMax);
   }
   url.searchParams.set("from", "ve3d");
   return url.toString();
@@ -3534,6 +3681,10 @@ function renderSnapshotCanvas(customLabel) {
     const sel = s.group && s.group.userData.selBox;
     if (sel && sel.visible) { sel.visible = false; hidden.push(sel); }
   }
+  // ẩn đường biên setback — nét kỹ thuật tham khảo, không đưa vào ảnh gửi khách
+  for (const o of houseGroup.children) {
+    if (o.userData && o.userData.isSetbackLine && o.visible) { o.visible = false; hidden.push(o); }
+  }
   renderer.render(scene, camera);
   const out = document.createElement("canvas");
   out.width = renderer.domElement.width; out.height = renderer.domElement.height;
@@ -3558,6 +3709,10 @@ function captureSnapshotForView(viewType, customTitle) {
   for (const s of state.strings) {
     const sel = s.group && s.group.userData.selBox;
     if (sel && sel.visible) { sel.visible = false; hidden.push(sel); }
+  }
+  // ẩn đường biên setback — nét kỹ thuật tham khảo, không đưa vào ảnh gửi khách
+  for (const o of houseGroup.children) {
+    if (o.userData && o.userData.isSetbackLine && o.visible) { o.visible = false; hidden.push(o); }
   }
 
   const prevPos = camera.position.clone();
@@ -3684,6 +3839,13 @@ function exportPDF() {
   $("pTotalKw").textContent = `≈ ${fmtKw(totalKw)} kWp`;
   const sf = calcSolarFactor();
   $("pMonthlyYield").textContent = `≈ ${Math.round(totalKw * YIELD_KWH_PER_KWP_DAY * sf * 30).toLocaleString("vi-VN")} kWh/tháng (Đón quang năng: ${(sf * 100).toFixed(0)}%)`;
+  const elec = stringElectricalCheck();
+  $("pElecCheck").textContent = totalPanels > 0
+    ? `Voc lạnh tối đa ~${Math.round(elec.worstV)} V (MPPT ${state.mpptMin ?? 150}–${state.mpptMax ?? 850} V)${elec.overV.length ? " ⚠ VƯỢT" : " ✓"}`
+    : "—";
+  const shadePct = calcShadingLossPct();
+  if ($("pShadingRow")) $("pShadingRow").style.display = shadePct > 0 ? "" : "none";
+  if ($("pShadingNote")) $("pShadingNote").textContent = `~${shadePct}%`;
   $("pTotalStrings").textContent = `${state.strings.length} chuỗi`;
 
   const tbody = $("pStringTableBody");
@@ -3968,10 +4130,10 @@ renderer.setAnimationLoop(() => {
 });
 // debug: xem nhanh trạng thái từ console + kiểm tra sức chứa mái
 window.__solar = {
-  state, getSlopes: () => slopes, THREE, renderer, scene, camera, controls,
+  state, getSlopes: () => slopes, THREE, renderer, scene, camera, controls, houseGroup, stringOrigin,
   layoutSlots, placedPanels, roofCapacity, roofUsed, planPlacement, repackSlope, addString, notify,
   collectState, applyState, undo, redo, exportCSV, exportPDF, setCameraView, shareURL,
-  refreshAll, buildHouse, calcSolarFactor, checkSetbackViolations,
+  refreshAll, buildHouse, calcSolarFactor, checkSetbackViolations, stringElectricalCheck, calcShadingLossPct, sunDirAt, getBonNuocPos, getTumPos, flatRoofY,
   getHistory: () => ({ hist, histIdx }),
   textures: () => renderer.info.memory,
 };

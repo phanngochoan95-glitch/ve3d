@@ -26,7 +26,7 @@ server.listen(8126, '127.0.0.1', async () => {
   try {
     const chromePath = findChrome();
     const port = 9452;
-    const tmpDir = 'C:\\Users\\Hoanpn\\AppData\\Local\\Temp\\chrome_cdp_test_v120';
+    const tmpDir = 'C:\\Users\\Hoanpn\\AppData\\Local\\Temp\\chrome_cdp_test_v120_' + Date.now(); // profile mới mỗi lần chạy — tránh Chrome HTTP cache phục vụ HTML stale
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
     const chromeProc = spawn(chromePath, [
