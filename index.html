@@ -151,7 +151,7 @@
           </div>
           <button type="button" class="overlay-toggle-btn" id="overlayToggleBtn" title="Thu gọn / Mở rộng bảng điều hướng">▾</button>
         </div>
-        <div id="dirAdvice" style="margin:4px 0 2px;font-size:11.5px;line-height:1.3"></div>
+        <!-- đã bỏ #dirAdvice (badge khuyên xoay hướng) — V1.23.1: nhà khách hướng cố định -->
         <div class="overlay-collapsible" id="overlayCollapsible">
           <input type="range" id="angleRange" min="0" max="360" step="1" value="0" aria-label="Chỉnh hướng nhà" style="margin-top:6px" />
           <div class="dir-presets-row" id="dirPresetsRow">
@@ -2856,18 +2856,8 @@ function getDirLabel(deg) {
   if (norm >= 247.5 && norm < 292.5) return "Tây (270°)";
   return "Tây Bắc (315°)";
 }
-function updateDirAdvice() {
-  const badge = $("dirAdvice");
-  if (!badge) return;
-  const a = ((state.houseAngle % 360) + 360) % 360;
-  if (a >= 135 && a <= 225) {
-    badge.innerHTML = `<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:#f6ffed;border:1px solid #b7eb8f;color:#237804;font-weight:600">✓ Hướng đón nắng tối ưu tại VN (100%)</span>`;
-  } else if ((a >= 60 && a < 135) || (a > 225 && a <= 295)) {
-    badge.innerHTML = `<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:#fffbe6;border:1px solid #ffe58f;color:#d46b08;font-weight:600">☀ Nắng nửa ngày (~88% so với Nam)</span>`;
-  } else {
-    badge.innerHTML = `<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:#fff1f0;border:1px solid #ffa39e;color:#cf1322;font-weight:600">⚠ Mái quay Bắc: kém nắng tại VN (-15~20%). Khuyên xoay Nam 180°</span>`;
-  }
-}
+// (đã bỏ updateDirAdvice — V1.23.1: nhà khách hướng cố định, badge "khuyên xoay Nam"
+// vô nghĩa; số % đón nắng thật theo hướng đã có ở summary/PDF từ calcSolarFactor PVGIS)
 function updateDirBtnActive() {
   const cur = ((state.houseAngle % 360) + 360) % 360;
   document.querySelectorAll("#dirPresetsRow .dir-btn").forEach(btn => {
@@ -2875,7 +2865,8 @@ function updateDirBtnActive() {
     const match = Math.abs(cur - a) <= 3 || Math.abs(cur - a) >= 357;
     btn.classList.toggle("active", match);
   });
-  updateDirAdvice();
+  // Bỏ badge "khuyên xoay hướng" (V1.23.1): nhà khách hướng gì cố định hướng đó —
+  // khuyên xoay là vô nghĩa; hệ số đón nắng thật đã thể hiện trong sản lượng (PVGIS).
 }
 function syncTargetKwpFromCount() {
   const kwpInput = $("targetKwpInput");
