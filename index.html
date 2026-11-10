@@ -1987,10 +1987,10 @@ function buildFlatRack(g, tilt, totalU, totalV, slots, k) {
     rail.position.set(x, lift - 0.0525, 0);
     rail.castShadow = true;
     tilt.add(rail);
-    // kẹp mid/biên mô phỏng trên rail (đại diện kẹp chữ T kẹp cạnh dài tấm)
+    // kẹp mid/biên mô phỏng trên rail (đại diện kẹp chữ T kẹp cạnh dài tấm) — thân nối gầm rail lên qua mép tấm
     for (const cz of clampZs) {
-      const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.07), RACK_MAT);
-      clamp.position.set(x, lift + 0.008, cz * k);
+      const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.06, 0.07), RACK_MAT);
+      clamp.position.set(x, lift - 0.005, cz * k);
       clamp.castShadow = true;
       tilt.add(clamp);
     }
@@ -2016,11 +2016,12 @@ function buildSlopedRack(tilt, totalU, totalV, slots, lift, k) {
   const clampXs = [];
   for (let i = 0; i < xsSlot.length - 1; i++) clampXs.push((xsSlot[i] + xsSlot[i + 1]) / 2);
   for (const zc of zs) {
+    // rail nằm GẦM dưới pin: tâm = lift − 0.045 (nắp rail chạm đáy tấm) — không cắt xuyên mặt pin
     const rail = new THREE.Mesh(new THREE.BoxGeometry(totalU + 0.1, 0.045, 0.05), RACK_MAT);
-    rail.position.set(0, lift - 0.02, zc * k);
+    rail.position.set(0, lift - 0.045, zc * k);
     rail.castShadow = true;
     tilt.add(rail);
-    // L-feet: tấm đế nằm trên mặt mái + chân đứng ngắn cố định (không theo rackH)
+    // L-feet: tấm đế nằm trên mặt mái + chân đứng ngắn nối đế lên gầm rail (không đâm xuyên)
     const nFeet = Math.max(2, Math.round(totalU / 1.4));
     for (let fi = 0; fi <= nFeet; fi++) {
       const fx = -totalU / 2 + 0.15 + (totalU - 0.3) * (fi / nFeet);
@@ -2028,15 +2029,15 @@ function buildSlopedRack(tilt, totalU, totalV, slots, lift, k) {
       plate.position.set(fx, 0.012, zc * k);
       plate.castShadow = true;
       tilt.add(plate);
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.04, FLUSH_LIFT - 0.03, 0.04), RACK_MAT);
-      leg.position.set(fx, 0.012 + (FLUSH_LIFT - 0.03) / 2, zc * k);
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.0325, 0.04), RACK_MAT);
+      leg.position.set(fx, 0.0363, zc * k);
       leg.castShadow = true;
       tilt.add(leg);
     }
-    // kẹp biên 2 đầu rail
+    // kẹp biên 2 đầu rail — thân kẹp nối từ gầm rail lên qua mép tấm
     for (const ex of [-totalU / 2 + 0.12, totalU / 2 - 0.12]) {
-      const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.07), RACK_MAT);
-      clamp.position.set(ex, lift + 0.008, zc * k);
+      const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.06, 0.07), RACK_MAT);
+      clamp.position.set(ex, lift, zc * k);
       clamp.castShadow = true;
       tilt.add(clamp);
     }
@@ -2044,8 +2045,8 @@ function buildSlopedRack(tilt, totalU, totalV, slots, lift, k) {
   // kẹp giữa giữa các tấm kề trong hàng, đặt trên rail (mỗi ranh u, mỗi rail)
   for (const cx of clampXs) {
     for (const zc of zs) {
-      const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.07), RACK_MAT);
-      clamp.position.set(cx, lift + 0.008, zc * k);
+      const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.06, 0.07), RACK_MAT);
+      clamp.position.set(cx, lift, zc * k);
       clamp.castShadow = true;
       tilt.add(clamp);
     }
