@@ -2706,11 +2706,11 @@ function syncOptTiltBadge() {
   const badge = $("optTiltBadge");
   if (!badge) return;
   const t = state.rackTilt ?? 15;
+  const f = Math.round(calcSolarFactor() * 100);
   if (t === 13) {
-    badge.textContent = "✓ Tối ưu 100%";
+    badge.textContent = `✓ Tối ưu ${f}% nắng`; // số THẬT từ calcSolarFactor (PVGIS −2% margin) — không ghi "100%" lệch với summary
     badge.style.color = "#059669";
   } else {
-    const f = Math.round(calcSolarFactor() * 100);
     badge.textContent = `~${f}% nắng`;
     badge.style.color = t >= 10 && t <= 16 ? "#0284c7" : "#d97706";
   }
@@ -3950,6 +3950,8 @@ function renderPlanCanvas() {
   if (ridgeHandle && ridgeHandle.visible) { ridgeHandle.visible = false; hidden.push(ridgeHandle); }
   // la bàn 3D là sprite hướng về camera phối cảnh — nhìn từ trên bị mirror, ẩn đi (bản vẽ có dòng "Hướng nhà")
   if (compassMesh && compassMesh.visible) { compassMesh.visible = false; hidden.push(compassMesh); }
+  // mặt đất + bóng đổ nhà chồng lên hình mái nhìn từ trên trông như khối lạ — bản vẽ kỹ thuật chỉ cần mái + pin (fix P3)
+  if (ground.visible) { ground.visible = false; hidden.push(ground); }
   for (const s of state.strings) {
     const sel = s.group && s.group.userData.selBox;
     if (sel && sel.visible) { sel.visible = false; hidden.push(sel); }
@@ -4058,6 +4060,32 @@ function renderPlanCanvas() {
   ctx.rotate(Math.PI / 2);
   ctx.fillText(lLabel, -ctx.measureText(lLabel).width / 2, 0);
   ctx.restore();
+
+  // nhãn từng chuỗi pin đặt trên dải tấm (P3: trước đây bản vẽ không ghi Chuỗi 1/2…)
+  const fsL = Math.max(11, pxPerM * 0.13);
+  ctx.font = `700 ${fsL}px "Segoe UI", system-ui, Arial, sans-serif`;
+  ctx.textBaseline = "middle";
+  for (const s of state.strings) {
+    const slope = slopeByKey(s.slopeKey);
+    const n = slope ? placedPanels(s) : 0;
+    if (!slope || n <= 0) continue; // chuỗi mồ côi / ghost 0 tấm không ghi
+    const hx = slope.origin.x + slope.u.x * s.cx + slope.v.x * s.cy;
+    const hz = slope.origin.z + slope.u.z * s.cx + slope.v.z * s.cy;
+    const tag = `Chuỗi ${s.id} · ${n} tấm`;
+    const tw = ctx.measureText(tag).width, th2 = fsL * 1.7;
+    const X = pxX(hx), Y = pxY(hz);
+    if (X < 0 || X > out.width || Y < 0 || Y > out.height) continue;
+    ctx.fillStyle = "rgba(27,39,51,.82)";
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(X - tw / 2 - 7, Y - th2 / 2, tw + 14, th2, 5);
+    else ctx.rect(X - tw / 2 - 7, Y - th2 / 2, tw + 14, th2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.55)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.fillText(tag, X - tw / 2, Y);
+  }
 
   // thước tỷ lệ 2 m (góc phải-dưới, trên khung watermark trái)
   const seg = 1 * pxPerM;
@@ -4233,10 +4261,16 @@ function polyDraw() {
   ctx.stroke();
   ctx.fillText("2 m", bx + seg + 5, by + 3);
   // readout: diện tích + sức chứa ước tính (hệ số lấp 80%)
+  const closedDraft = polyDraft.length >= 4
+    && Math.abs(polyDraft[0].x - polyDraft[polyDraft.length - 1].x) < 1e-6
+    && Math.abs(polyDraft[0].z - polyDraft[polyDraft.length - 1].z) < 1e-6;
+  const nPts = closedDraft ? polyDraft.length - 1 : polyDraft.length; // không đếm điểm khép vòng trùng điểm đầu
   const area = polyAreaM2(polyDraft);
   const est = area > 0 ? Math.floor(area / (panelDims().pL * panelDims().pW) * 0.8) : 0;
   polyInfo.innerHTML = polyFullDraft
     ? "▭ Nguyên mái — toàn bộ mặt mái (kể cả phần đỗ ra khỏi bìa tường) dùng được. Bấm <b>✓ Lưu &amp; áp dụng</b> để bỏ giới hạn vùng."
+    : closedDraft
+    ? `✓ Đã khép vùng: <b>${nPts} điểm</b> · <b>${area.toFixed(1)} m²</b> · sức chứa ước tính <b>${est} tấm (≈ ${fmtKw(kwOf(est))} kWp)</b> — bấm <b>✓ Lưu &amp; áp dụng</b> (↩ Hoàn tác điểm nếu muốn vẽ lại)`
     : polyDraft.length < 3
     ? `Đã chọn <b>${polyDraft.length}</b> điểm — cần ≥ 3 điểm để khép vùng (click gần điểm đầu để khép)`
     : `Vùng mái: <b>${area.toFixed(1)} m²</b> · ${polyDraft.length} điểm · sức chứa ước tính <b>${est} tấm (≈ ${fmtKw(kwOf(est))} kWp)</b> với hệ số lấp 80%`;
@@ -4274,6 +4308,11 @@ polyCanvas.addEventListener("click", (e) => {
   const r = polyCanvas.getBoundingClientRect();
   const p = polyToM(e.clientX - r.left, e.clientY - r.top);
   if (Math.abs(p.x) > state.houseW / 2 + 1e-6 || Math.abs(p.z) > state.houseL / 2 + 1e-6) return; // chỉ vẽ trong khung nhà
+  // đã khép vòng (điểm cuối trùng điểm đầu) → bỏ qua click tiếp theo (tránh thêm điểm lạc sau khi khép — fix P3)
+  const closedNow = polyDraft.length >= 4
+    && Math.abs(polyDraft[0].x - polyDraft[polyDraft.length - 1].x) < 1e-6
+    && Math.abs(polyDraft[0].z - polyDraft[polyDraft.length - 1].z) < 1e-6;
+  if (closedNow) return;
   if (polyDraft.length >= 3 && Math.hypot(p.x - polyDraft[0].x, p.z - polyDraft[0].z) < 0.5) {
     polyDraft.push({ ...polyDraft[0] }); // khép vòng = click gần điểm đầu
     polyHover = null;
