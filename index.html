@@ -486,6 +486,7 @@
       </details>
 
       <button class="save-btn" id="saveBtn">📷 Lưu ảnh mô phỏng</button>
+      <button class="save-btn" id="planBtn" style="margin-top:8px">📐 Tải bản vẽ mặt bằng (2D)</button>
       <button class="save-btn" id="exportPdfBtn" style="margin-top:8px;background:#0d6832">📄 Xuất PDF báo giá sơ bộ</button>
       <button class="save-btn vcc-btn" id="linkBaoGiaBtn" title="Chuyển dữ liệu thiết kế 3D sang công cụ Lập Báo Giá VCC">⚡ Chuyển Sang Lập Báo Giá Chi Tiết VCC ↗</button>
       <button class="reset-btn" id="resetBtn">Reset mô phỏng</button>
@@ -1409,6 +1410,7 @@ function textSprite(text, color, opt = {}) {
 }
 function dimLine(p1, p2, tickDir, color, label, opt = {}) {
   const grp = new THREE.Group();
+  grp.userData.isDimLine = true; // đánh dấu để bản vẽ mặt bằng 2D (renderPlanCanvas) ẩn — đã có nét ghi riêng nét sắc hơn
   const mat = new THREE.LineBasicMaterial({ color });
   grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([p1, p2]), mat));
   for (const p of [p1, p2]) {
@@ -1446,6 +1448,7 @@ function buildDimLines() {
     // nhãn diện tích mái: ẩn với mái đã lắp pin — pin che nhãn, đọc không được
     if (!state.strings.some(st => st.slopeKey === s.key)) {
       const sp = textSprite([s.label, `${s.uLen.toFixed(1)} × ${s.vLen.toFixed(1)} m`], "#1b2733", { overlay: true });
+      sp.userData.isDimLine = true; // ẩn trong bản vẽ mặt bằng 2D
       sp.position.copy(s.origin).addScaledVector(s.n, 0.12);
       houseGroup.add(sp);
     }
@@ -2487,6 +2490,40 @@ function syncBonNuocControls() {
 }
 
 // Tính hệ số hiệu chỉnh quang năng theo góc nghiêng và hướng đón nắng tại Việt Nam
+// Hiệu chuẩn PVGIS v5.3 (ERA5 2005–2023, script `_memory/scripts/pvgis-calibrate.mjs`):
+// tỉ lệ sản lượng riêng loss=0 theo (hướng nhà, nghiêng mái) so với chuẩn Nam/13°,
+// lấy TRUNG BÌNH 3 thành phố (Hà Nội / Đà Nẵng / TP.HCM). Ví dụ điểm quét:
+// Nam: 13°→100%, 26°→98.3%, 45°→89.5% · Đông: 26°→93.8% · Tây: 26°→96.4% · Bắc: 26°→83.9%.
+// Khi tra bảng trừ thêm 2% làm margin thương mại bảo thủ (calibrate 10-11-2026,
+// thay công thức tuyến tính cũ vốn bi quan 3–7 điểm phần trăm ở hướng Đông/Tây/Bắc).
+const PVGIS_TILT = [10, 13, 15, 20, 26, 30, 45];
+const PVGIS_BY_AZ = {
+  0:   [94.3, 92.8, 91.6, 88.4, 83.9, 80.6, 66.1], // Bắc (az 0°)
+  90:  [97.7, 97.2, 96.8, 95.6, 93.8, 92.3, 84.9], // Đông (az 90°)
+  180: [99.9, 100.0, 100.0, 99.5, 98.3, 97.1, 89.5], // Nam (az 180°)
+  270: [98.9, 98.8, 98.6, 97.9, 96.4, 95.0, 87.8]  // Tây (az 270°)
+};
+function pvgisRatioPct(tilt, az) {
+  const azNorm = ((az % 360) + 360) % 360;
+  const azKeys = [0, 90, 180, 270];
+  // nội suy hướng theo cung ngắn nhất (có vòng 360→0)
+  let a0 = 180, a1 = 180;
+  for (let i = 0; i < azKeys.length; i++) {
+    const k = azKeys[i], kNext = azKeys[(i + 1) % azKeys.length];
+    const span = kNext > k ? kNext - k : 360 - kNext + k;
+    const rel = ((azNorm - k) % 360 + 360) % 360;
+    if (rel <= span) { a0 = k; a1 = kNext; break; }
+  }
+  const tAz = a1 > a0 ? (azNorm - a0) / (a1 - a0) : ((azNorm + 360 - a0) % 360) / (a1 + 360 - a0);
+  const byTilt = PVGIS_TILT.map((_, i) => PVGIS_BY_AZ[a0][i] * (1 - tAz) + PVGIS_BY_AZ[a1][i] * tAz);
+  // nội suy nghiêng (clamp ngoài biên 10–45°)
+  const tiltC = Math.max(PVGIS_TILT[0], Math.min(45, tilt));
+  let i = 0;
+  while (i < PVGIS_TILT.length - 1 && tiltC > PVGIS_TILT[i + 1]) i++;
+  const t0 = PVGIS_TILT[i], t1 = PVGIS_TILT[Math.min(i + 1, PVGIS_TILT.length - 1)];
+  const f = t1 === t0 ? 0 : (tiltC - t0) / (t1 - t0);
+  return byTilt[i] * (1 - f) + byTilt[Math.min(i + 1, PVGIS_TILT.length - 1)] * f;
+}
 function calcSolarFactor() {
   let tilt = 13, az = 180;
   if (state.mount === "khungsat") {
@@ -2497,11 +2534,7 @@ function calcSolarFactor() {
     tilt = state.roofAngle ?? 26;
     az = ((state.houseAngle % 360) + 360) % 360;
   }
-  const diffAz = Math.abs((((az - 180) % 360) + 360) % 360 - 180);
-  const diffTilt = Math.abs(tilt - 13);
-  const azFactor = 1.0 - 0.18 * (diffAz / 180);
-  const tiltFactor = Math.max(0.85, 1.0 - 0.0035 * diffTilt);
-  return THREE.MathUtils.clamp(azFactor * tiltFactor, 0.78, 1.02);
+  return THREE.MathUtils.clamp(pvgisRatioPct(tilt, az) / 100 - 0.02, 0.60, 1.02);
 }
 
 // K4-mini: kiểm tra điện chuỗi — Voc lạnh không vượt MPPT max, Vmp nóng không tụt dưới MPPT min
@@ -3761,6 +3794,129 @@ function captureSnapshotForView(viewType, customTitle) {
   return out.toDataURL("image/jpeg", 0.82);
 }
 
+// K6 (phase 1): BẢN VẼ MẶT BẰNG 2D — camera chính trực (orthographic) nhìn từ trên
+// xoay theo trục nhà, vẽ nét ghi kích thước nhà + thước tỷ lệ + hướng nhà.
+// Phase 2 (backlog): vẽ mái đa giác theo kích thước thật (thay đổi lớn cách nhập nhà).
+function renderPlanCanvas() {
+  const hidden = [];
+  if (ridgeHandle && ridgeHandle.visible) { ridgeHandle.visible = false; hidden.push(ridgeHandle); }
+  // la bàn 3D là sprite hướng về camera phối cảnh — nhìn từ trên bị mirror, ẩn đi (bản vẽ có dòng "Hướng nhà")
+  if (compassMesh && compassMesh.visible) { compassMesh.visible = false; hidden.push(compassMesh); }
+  for (const s of state.strings) {
+    const sel = s.group && s.group.userData.selBox;
+    if (sel && sel.visible) { sel.visible = false; hidden.push(sel); }
+  }
+  for (const o of houseGroup.children) {
+    if (o.userData && (o.userData.isSetbackLine || o.userData.isDimLine) && o.visible) { o.visible = false; hidden.push(o); }
+  }
+
+  // khung nhìn: bounding box cảnh quy về hệ trục NHÀ (xoay ngược houseAngle)
+  const bbox = new THREE.Box3().setFromObject(houseGroup);
+  const bboxSize = bbox.getSize(new THREE.Vector3());
+  const th = THREE.MathUtils.degToRad(state.houseAngle);
+  const cosT = Math.cos(th), sinT = Math.sin(th);
+  const corner = (dx, dz) => ({ x: dx * cosT + dz * sinT, z: -dx * sinT + dz * cosT });
+  let lx = 0, lz = 0;
+  for (const [dx, dz] of [[-bboxSize.x / 2, -bboxSize.z / 2], [bboxSize.x / 2, -bboxSize.z / 2], [-bboxSize.x / 2, bboxSize.z / 2], [bboxSize.x / 2, bboxSize.z / 2]]) {
+    const c = corner(dx, dz);
+    lx = Math.max(lx, Math.abs(c.x) * 2);
+    lz = Math.max(lz, Math.abs(c.z) * 2);
+  }
+  const margin = Math.max(2.6, Math.max(lx, lz) * 0.2);
+  const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 500);
+  cam.up.set(-sinT, 0, -cosT); // màn hình "lên" = trục nhà −z
+  cam.position.set(0, bbox.max.y + 80, 0);
+  cam.lookAt(0, bbox.getCenter(new THREE.Vector3()).y, 0);
+
+  const out = document.createElement("canvas");
+  out.width = renderer.domElement.width;
+  out.height = renderer.domElement.height;
+  const halfX0 = lx / 2 + margin;
+  const halfD0 = lz / 2 + margin;
+  if (halfD0 * out.width > halfX0 * out.height) {
+    cam.left = -halfD0 * out.width / out.height; cam.right = halfD0 * out.width / out.height;
+    cam.top = halfD0; cam.bottom = -halfD0;
+  } else {
+    cam.left = -halfX0; cam.right = halfX0;
+    cam.top = halfX0 * out.height / out.width; cam.bottom = -halfX0 * out.height / out.width;
+  }
+  cam.updateProjectionMatrix();
+  renderer.render(scene, cam);
+
+  const ctx = out.getContext("2d");
+  ctx.fillStyle = "#f7fafc";
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(renderer.domElement, 0, 0);
+
+  // quy đổi mét → px: bề ngang khung nhìn = cam.right − cam.left
+  const pxPerM = out.width / (cam.right - cam.left);
+  const pxX = (mx) => out.width / 2 + mx * pxPerM;   // toạ độ TRỤC NHÀ (gốc tại tâm nhà)
+  const pxY = (mz) => out.height / 2 + mz * pxPerM;
+
+  // nét ghi kích thước nhà W×L (viền nhà nét đứt)
+  const W = state.houseW, L = state.houseL;
+  const dimColor = "#334155", tick = 8;
+  ctx.strokeStyle = dimColor;
+  ctx.fillStyle = dimColor;
+  ctx.lineWidth = Math.max(1.5, pxPerM * 0.03);
+  const fs = Math.max(13, pxPerM * 0.16);
+  ctx.font = `700 ${fs}px "Segoe UI", system-ui, Arial, sans-serif`;
+  ctx.textBaseline = "middle";
+  // viền nhà nét đứt
+  ctx.save();
+  ctx.setLineDash([6, 5]);
+  ctx.strokeRect(pxX(-W / 2), pxY(-L / 2), W * pxPerM, L * pxPerM);
+  ctx.restore();
+  // kích thước ngang (W) — dưới mép nhà
+  const yD = pxY(L / 2) + fs * 1.4;
+  ctx.beginPath();
+  ctx.moveTo(pxX(-W / 2), yD - tick); ctx.lineTo(pxX(-W / 2), yD + tick);
+  ctx.moveTo(pxX(W / 2), yD - tick); ctx.lineTo(pxX(W / 2), yD + tick);
+  ctx.moveTo(pxX(-W / 2), yD); ctx.lineTo(pxX(W / 2), yD);
+  ctx.stroke();
+  const wLabel = `${W.toLocaleString("vi-VN")} m`;
+  ctx.fillText(wLabel, pxX(0) - ctx.measureText(wLabel).width / 2, yD - fs * 0.8);
+  // kích thước dọc (L) — phải mép nhà
+  const xD = pxX(W / 2) + fs * 1.4;
+  ctx.beginPath();
+  ctx.moveTo(xD - tick, pxY(-L / 2)); ctx.lineTo(xD + tick, pxY(-L / 2));
+  ctx.moveTo(xD - tick, pxY(L / 2)); ctx.lineTo(xD + tick, pxY(L / 2));
+  ctx.moveTo(xD, pxY(-L / 2)); ctx.lineTo(xD, pxY(L / 2));
+  ctx.stroke();
+  const lLabel = `${L.toLocaleString("vi-VN")} m`;
+  ctx.save();
+  ctx.translate(xD + fs * 0.9, pxY(0));
+  ctx.rotate(Math.PI / 2);
+  ctx.fillText(lLabel, -ctx.measureText(lLabel).width / 2, 0);
+  ctx.restore();
+
+  // thước tỷ lệ 2 m (góc phải-dưới, trên khung watermark trái)
+  const seg = 1 * pxPerM;
+  const bx = out.width - 16 - seg * 2, by = out.height - 26;
+  ctx.strokeStyle = "#0f172a";
+  ctx.fillStyle = "#0f172a";
+  ctx.lineWidth = Math.max(2, pxPerM * 0.05);
+  ctx.beginPath();
+  ctx.moveTo(bx, by); ctx.lineTo(bx + seg * 2, by);
+  for (let i = 0; i <= 2; i++) { ctx.moveTo(bx + i * seg, by - 5); ctx.lineTo(bx + i * seg, by + 5); }
+  ctx.stroke();
+  ctx.font = `700 ${Math.max(11, fs * 0.72)}px "Segoe UI", system-ui, Arial, sans-serif`;
+  ctx.fillText("0", bx - 3, by - fs * 0.9);
+  ctx.fillText("1", bx + seg - 3, by - fs * 0.9);
+  ctx.fillText("2 m", bx + seg * 2 - 8, by - fs * 0.9);
+  // hướng nhà theo la bàn
+  const DIR_NAMES = { 0: "Bắc", 45: "Đông Bắc", 90: "Đông", 135: "Đông Nam", 180: "Nam", 225: "Tây Nam", 270: "Tây", 315: "Tây Bắc" };
+  const dirName = DIR_NAMES[((state.houseAngle % 360) + 360) % 360] || `${state.houseAngle}°`;
+  const dirText = `Hướng nhà: ${state.houseAngle}° (${dirName})`;
+  ctx.font = `700 ${Math.max(11, fs * 0.78)}px "Segoe UI", system-ui, Arial, sans-serif`;
+  ctx.fillText(dirText, out.width - 16 - ctx.measureText(dirText).width, by - fs * 1.8);
+
+  drawWatermark(out, ctx, "BẢN VẼ MẶT BẰNG BỐ TRÍ GIÀN PIN");
+  for (const o of hidden) o.visible = true;
+  renderer.render(scene, camera);
+  return out;
+}
+
 // Tự động chụp bộ 4 bức ảnh phối cảnh chuẩn để nhúng trang trọng vào Báo Giá PDF
 function captureStandardSnapshots() {
   const snaps = [];
@@ -3800,6 +3956,15 @@ function captureStandardSnapshots() {
       desc: "Chi tiết khung sắt, dầm xà gồ, cột trụ và độ che bóng",
       dataUrl: snap4
     });
+
+    // 5. Bản vẽ mặt bằng K6 (kích thước nhà + thước tỷ lệ + hướng nhà)
+    const snapPlan = renderPlanCanvas();
+    snaps.push({
+      id: "snap_plan",
+      title: "5. Bản Vẽ Mặt Bằng Bố Trí",
+      desc: "Bản vẽ 2D kích thước nhà, hướng nhà và thước tỷ lệ",
+      dataUrl: snapPlan.toDataURL("image/jpeg", 0.88)
+    });
   } catch (e) {
     console.warn("Lỗi tạo bộ snapshots:", e);
   }
@@ -3813,6 +3978,18 @@ $("saveBtn").onclick = () => {
     a.download = "mo-phong-3d-pin.png";
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  }, "image/png");
+};
+// K6: tải riêng bản vẽ mặt bằng 2D (PNG, có kích thước + thước tỷ lệ)
+$("planBtn").onclick = () => {
+  const out = renderPlanCanvas();
+  out.toBlob(blob => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "ban-ve-mat-bang.png";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    notify("✓ Đã tải bản vẽ mặt bằng 2D (kích thước + thước tỷ lệ)", "ok");
   }, "image/png");
 };
 function exportPDF() {
@@ -3991,6 +4168,11 @@ updateCustomFields();
   if (fromVcc || hasKwp || hasRoof || hasPanels) {
     try {
       applying = true;
+      // HỢP ĐỒNG KEY LOẠI MÁI 2 CHIỀU ve3d ↔ VCC (PA3, chốt 10-11-2026):
+      // - Key chuẩn của ve3d: ton / ngoi / nhat / bang / hai_doc_bang.
+      // - Nhận thêm alias từ bên gửi: metal, tile, concrete, flat, truncated, 2doc_bang.
+      // - Chiều ngược (ve3d→VCC) map ngược tương ứng ở QuoteBuilder.jsx apply3dData
+      //   (repo "Kiểm tra và xây dựng báo giá") — sửa 1 bên phải sửa đồng bộ bên kia.
       const roofMap = {
         metal: 'ton', ton: 'ton',
         tile: 'ngoi', ngoi: 'ngoi',
@@ -4133,7 +4315,7 @@ window.__solar = {
   state, getSlopes: () => slopes, THREE, renderer, scene, camera, controls, houseGroup, stringOrigin,
   layoutSlots, placedPanels, roofCapacity, roofUsed, planPlacement, repackSlope, addString, notify,
   collectState, applyState, undo, redo, exportCSV, exportPDF, setCameraView, shareURL,
-  refreshAll, buildHouse, calcSolarFactor, checkSetbackViolations, stringElectricalCheck, calcShadingLossPct, sunDirAt, getBonNuocPos, getTumPos, flatRoofY,
+  refreshAll, buildHouse, calcSolarFactor, checkSetbackViolations, stringElectricalCheck, calcShadingLossPct, sunDirAt, getBonNuocPos, getTumPos, flatRoofY, renderPlanCanvas, captureStandardSnapshots,
   getHistory: () => ({ hist, histIdx }),
   textures: () => renderer.info.memory,
 };
