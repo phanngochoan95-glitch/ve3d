@@ -1910,11 +1910,19 @@ function barBetween(a, b, r) {
   mesh.castShadow = true;
   return mesh;
 }
+// đường biên giữa các phần tử kề + 2 biên ngoài (vị trí rail/kẹp khớp cạnh dài tấm)
+function edgeLines(centers, size, inset) {
+  const lines = [];
+  for (let i = 0; i < centers.length - 1; i++) lines.push((centers[i] + centers[i + 1]) / 2);
+  if (centers.length) lines.push(centers[0] - size / 2 + inset, centers[centers.length - 1] + size / 2 - inset);
+  return lines;
+}
 // Khung đỡ MÁI BẰNG (chỉ mái bằng mới làm giàn cao — mái dốc thì áp mái sát mái, xem buildSlopedRack):
-// chân đế bê tông + bản mã liên kết, cột trụ D76, dầm ngang HỘP 40×80 trên đỉnh cột, rail dọc 30×60
-// đặt tại BIÊN GIỮA các cột tấm (rail chung cho 2 tấm kề — chuẩn kỹ thuật kẹp cạnh dài) + 2 rail biên,
-// kẹp mid/biên mô phỏng trên rail, giằng chéo chữ X ở 2 cột biên. Cả chuỗi nằm trên 1 mặt phẳng
-// nghiêng rackTilt (azimuth cố định hướng Nam — xem makeStringMesh); đáy rail (yu) nâng theo rackH.
+// chân đế bê tông + bản mã liên kết, cột trụ D76, dầm ngang HỘP 40×80 trên đỉnh cột, rail 30×60
+// CHẠY SONG SONG CẠNH DÀI TẤM (dọc → rail dọc tại biên cột; ngang → rail ngang tại biên hàng —
+// rail luôn nằm dưới cạnh được kẹp, không bao giờ vắt ngang thân tấm) + kẹp mid/biên mô phỏng,
+// giằng chéo chữ X ở 2 cột biên. Cả chuỗi nằm trên 1 mặt phẳng nghiêng rackTilt (azimuth cố định
+// hướng Nam — xem makeStringMesh); đáy rail (yu) nâng theo rackH.
 function buildFlatRack(g, tilt, totalU, totalV, slots, k) {
   const th = THREE.MathUtils.degToRad(state.rackTilt ?? 15);
   const sin = Math.sin(th), cos = Math.cos(th);
@@ -1926,18 +1934,11 @@ function buildFlatRack(g, tilt, totalU, totalV, slots, k) {
   const yu = baseH * cos + halfZ * sin;           // tâm nâng tại pivot để mép thấp nhất (z = halfZ) cách sàn đúng baseH
   const lift = yu + 0.115;                        // +0.115 = dầm hộp 0.08 nằm giữa đỉnh cột và đáy rail
   const yAt = z => (yu - z * sin) / cos;          // cao độ đáy rail tại z' hệ group
-  // Vị trí rail dọc: BIÊN giữa các cột tấm (1 rail chung cho 2 tấm kề — kẹp cạnh dài chuẩn) + 2 rail biên
+  const portrait = slots[0] ? slots[0].fV >= slots[0].fU : true; // tấm dọc: cạnh dài chạy theo dốc
   const xsSlot = [...new Set(slots.map(s => Math.round(s.x * 1000) / 1000))].sort((a, b) => a - b);
-  const fU = slots[0] ? slots[0].fU : 1.134;
-  const railXs = [];
-  for (let i = 0; i < xsSlot.length - 1; i++) railXs.push((xsSlot[i] + xsSlot[i + 1]) / 2);
-  if (xsSlot.length) railXs.push(xsSlot[0] - fU / 2 + 0.12, xsSlot[xsSlot.length - 1] + fU / 2 - 0.12);
-  // Ranh giới v giữa các hàng tấm + 2 đầu biên — vị trí kẹp trên rail
   const ysSlot = [...new Set(slots.map(s => Math.round(s.y * 1000) / 1000))].sort((a, b) => a - b);
+  const fU = slots[0] ? slots[0].fU : 1.134;
   const fV = slots[0] ? slots[0].fV : 2.382;
-  const clampZs = [];
-  for (let i = 0; i < ysSlot.length - 1; i++) clampZs.push((ysSlot[i] + ysSlot[i + 1]) / 2);
-  if (ysSlot.length) clampZs.push(ysSlot[0] - fV / 2 + 0.12, ysSlot[ysSlot.length - 1] + fV / 2 - 0.12);
   // Nhịp bước cột chuẩn kết cấu thực tế: khẩu độ thép hộp 2.5m - 3.2m
   // Chuỗi hẹp (<= 3.5m) chỉ cần đúng 2 cột ở 2 biên; chuỗi rộng hơn mới chia thêm cột giữa
   const nCol = totalU <= 3.5 ? 1 : Math.max(1, Math.round(totalU / 3.0));
@@ -1980,75 +1981,99 @@ function buildFlatRack(g, tilt, totalU, totalV, slots, k) {
       g.add(barBetween(new THREE.Vector3(x, midY, zRow), new THREE.Vector3(x, midY, -zRow), 0.035));
     }
   }
-  // rail dọc chạy theo mặt nghiêng, dài VỪA chạm hàng cột ngoài (trước đây nhô 0.3m lơ lửng ngoài tầm đỡ)
-  const railLen = (2 * zRow + 0.1) / cos;
-  for (const x of railXs) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, railLen), RACK_MAT);
-    rail.position.set(x, lift - 0.0525, 0);
-    rail.castShadow = true;
-    tilt.add(rail);
-    // kẹp mid/biên mô phỏng trên rail (đại diện kẹp chữ T kẹp cạnh dài tấm) — thân nối gầm rail lên qua mép tấm
-    for (const cz of clampZs) {
-      const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.06, 0.07), RACK_MAT);
-      clamp.position.set(x, lift - 0.005, cz * k);
-      clamp.castShadow = true;
-      tilt.add(clamp);
+  // rail CHẠY SONG SONG CẠNH DÀI TẤM, nằm gầm pin (nắp rail chạm đáy tấm):
+  // dọc → rail dọc tại biên cột, dài vừa chạm hàng cột ngoài (trước đây nhô 0.3m lơ lửng);
+  // ngang → rail ngang tại biên hàng + chân đỡ ngắn từ mái lên gầm rail.
+  if (portrait) {
+    const railLen = (2 * zRow + 0.1) / cos;
+    for (const x of edgeLines(xsSlot, fU, 0.12)) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, railLen), RACK_MAT);
+      rail.position.set(x, lift - 0.0525, 0);
+      rail.castShadow = true;
+      tilt.add(rail);
+      for (const cz of edgeLines(ysSlot, fV, 0.12)) {
+        const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.06, 0.07), RACK_MAT);
+        clamp.position.set(x, lift - 0.005, cz * k);
+        clamp.castShadow = true;
+        tilt.add(clamp);
+      }
+    }
+  } else {
+    for (const zc of edgeLines(ysSlot, fV, 0.12)) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(totalU + 0.2, 0.06, 0.07), RACK_MAT);
+      rail.position.set(0, lift - 0.0525, zc * k);
+      rail.castShadow = true;
+      tilt.add(rail);
+      // chân đỡ ngắn dưới rail tại 3 vị trí u (dầm chính không chạy qua biên hàng)
+      for (const px of [-totalU / 2 + 0.3, 0, totalU / 2 - 0.3]) {
+        if (lift - 0.0825 > 0.2) tilt.add(barBetween(new THREE.Vector3(px, 0.14, zc * k), new THREE.Vector3(px, lift - 0.0825, zc * k), 0.038));
+      }
+      for (const cx of edgeLines(xsSlot, fU, 0.12)) {
+        const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.06, 0.07), RACK_MAT);
+        clamp.position.set(cx, lift - 0.005, zc * k);
+        clamp.castShadow = true;
+        tilt.add(clamp);
+      }
     }
   }
   const selH = yAt(-zRow) + 0.3;
   return { lift, selH, selY: selH / 2 - 0.12 };
 }
 // Giàn ÁP MÁI trên mái dốc (tôn, ngói, Nhật): thực tế KHÔNG làm giàn cao trên mái dốc —
-// rail ngang bắt vít vào đỉnh sóng tôn/quản ngói qua L-feet ngắn, pin SÁT MÁI theo đúng dốc
+// rail bắt vít vào đỉnh sóng tôn/quản ngói qua L-feet ngắn, pin SÁT MÁI theo đúng dốc
 // (hướng nắng theo hướng nhà). Chiều cao cố định ~12cm, KHÔNG theo rackH (fix phản hồi thực tế).
+// Rail CHẠY SONG SONG CẠNH DÀI TẤM (dọc → rail dọc theo dốc tại biên cột; ngang → rail ngang
+// tại biên hàng) — khớp kiểu kẹp cạnh dài, không bao giờ vắt ngang thân tấm (fix phản hồi
+// "khung 1 kiểu, pin xếp 1 kiểu khác").
 const FLUSH_LIFT = 0.12;
 function buildSlopedRack(tilt, totalU, totalV, slots, lift, k) {
-  const rowYs = [...new Set(slots.map(s => Math.round(s.y * 1000) / 1000))].sort((a, b) => a - b);
-  const sampleSlot = slots[0];
-  const fV = sampleSlot ? sampleSlot.fV : 1.134;
-  // rail NGANG tại biên giữa các hàng (1 rail chung cho 2 hàng kề) + 2 rail biên ngoài
-  const zs = [];
-  for (let i = 0; i < rowYs.length - 1; i++) zs.push((rowYs[i] + rowYs[i + 1]) / 2);
-  if (rowYs.length) zs.push(rowYs[0] - fV / 2 + 0.06, rowYs[rowYs.length - 1] + fV / 2 - 0.06);
-  // vị trí kẹp: biên giữa các cột tấm (kẹp chung 2 tấm kề) + 2 đầu biên rail
+  const s0 = slots[0];
+  const portrait = s0 ? s0.fV >= s0.fU : true; // tấm dọc: cạnh dài chạy theo dốc
   const xsSlot = [...new Set(slots.map(s => Math.round(s.x * 1000) / 1000))].sort((a, b) => a - b);
-  const fU = sampleSlot ? sampleSlot.fU : 2.382;
-  const clampXs = [];
-  for (let i = 0; i < xsSlot.length - 1; i++) clampXs.push((xsSlot[i] + xsSlot[i + 1]) / 2);
-  for (const zc of zs) {
-    // rail nằm GẦM dưới pin: tâm = lift − 0.045 (nắp rail chạm đáy tấm) — không cắt xuyên mặt pin
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(totalU + 0.1, 0.045, 0.05), RACK_MAT);
-    rail.position.set(0, lift - 0.045, zc * k);
-    rail.castShadow = true;
-    tilt.add(rail);
-    // L-feet: tấm đế nằm trên mặt mái + chân đứng ngắn nối đế lên gầm rail (không đâm xuyên)
-    const nFeet = Math.max(2, Math.round(totalU / 1.4));
-    for (let fi = 0; fi <= nFeet; fi++) {
-      const fx = -totalU / 2 + 0.15 + (totalU - 0.3) * (fi / nFeet);
-      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.016, 0.17), RACK_MAT);
-      plate.position.set(fx, 0.012, zc * k);
-      plate.castShadow = true;
-      tilt.add(plate);
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.0325, 0.04), RACK_MAT);
-      leg.position.set(fx, 0.0363, zc * k);
-      leg.castShadow = true;
-      tilt.add(leg);
+  const ysSlot = [...new Set(slots.map(s => Math.round(s.y * 1000) / 1000))].sort((a, b) => a - b);
+  const fU = s0 ? s0.fU : 1.134;
+  const fV = s0 ? s0.fV : 2.382;
+  const addFoot = (fx, fz, alongU) => {
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(alongU ? 0.17 : 0.12, 0.016, alongU ? 0.12 : 0.17), RACK_MAT);
+    plate.position.set(fx, 0.012, fz);
+    plate.castShadow = true;
+    tilt.add(plate);
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.0325, 0.04), RACK_MAT);
+    leg.position.set(fx, 0.0363, fz);
+    leg.castShadow = true;
+    tilt.add(leg);
+  };
+  const addClamp = (cx, cz) => {
+    const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.06, 0.07), RACK_MAT);
+    clamp.position.set(cx, lift, cz);
+    clamp.castShadow = true;
+    tilt.add(clamp);
+  };
+  if (portrait) {
+    // rail DỌC chạy theo dốc, đặt tại biên giữa các cột tấm (kẹp cạnh dài chuẩn) + 2 rail biên
+    for (const x of edgeLines(xsSlot, fU, 0.12)) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.045, totalV + 0.1), RACK_MAT);
+      rail.position.set(x, lift - 0.045, 0);
+      rail.castShadow = true;
+      tilt.add(rail);
+      const nFeet = Math.max(2, Math.round((totalV + 0.1) / 1.4));
+      for (let fi = 0; fi <= nFeet; fi++) {
+        addFoot(x, (-totalV / 2 - 0.05 + (totalV + 0.1) * (fi / nFeet)) * k, false);
+      }
+      for (const cz of edgeLines(ysSlot, fV, 0.12)) addClamp(x, cz * k);
     }
-    // kẹp biên 2 đầu rail — thân kẹp nối từ gầm rail lên qua mép tấm
-    for (const ex of [-totalU / 2 + 0.12, totalU / 2 - 0.12]) {
-      const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.06, 0.07), RACK_MAT);
-      clamp.position.set(ex, lift, zc * k);
-      clamp.castShadow = true;
-      tilt.add(clamp);
-    }
-  }
-  // kẹp giữa giữa các tấm kề trong hàng, đặt trên rail (mỗi ranh u, mỗi rail)
-  for (const cx of clampXs) {
-    for (const zc of zs) {
-      const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.06, 0.07), RACK_MAT);
-      clamp.position.set(cx, lift, zc * k);
-      clamp.castShadow = true;
-      tilt.add(clamp);
+  } else {
+    // rail NGANG ngang đỉnh, đặt tại biên giữa các hàng tấm + 2 rail biên
+    for (const zc of edgeLines(ysSlot, fV, 0.12)) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(totalU + 0.1, 0.045, 0.05), RACK_MAT);
+      rail.position.set(0, lift - 0.045, zc * k);
+      rail.castShadow = true;
+      tilt.add(rail);
+      const nFeet = Math.max(2, Math.round((totalU + 0.1) / 1.4));
+      for (let fi = 0; fi <= nFeet; fi++) {
+        addFoot((-totalU / 2 - 0.05 + (totalU + 0.1) * (fi / nFeet)), zc * k, true);
+      }
+      for (const cx of edgeLines(xsSlot, fU, 0.12)) addClamp(cx, zc * k);
     }
   }
 }
@@ -2600,17 +2625,21 @@ function calcRackBOM() {
         totalGiangCheo += beamLen * rowZList.length + (2 * zRow) * 2;
       }
 
-      // 3b. Rail dọc đặt tại biên giữa các cột tấm + 2 rail biên (khớp hình học buildFlatRack):
-      // số rail = cols + 1, dài vừa chạm hàng cột ngoài (trước đây nhô 0.3m ngoài hàng cột)
-      totalRail3x6 += ((2 * zRow + 0.1) / cos) * (cols + 1);
+      // 3b. Rail chạy song song cạnh dài tấm (khớp hình học buildFlatRack):
+      // dọc → cols+1 rail dọc dài vừa hàng cột; ngang → rows+1 rail ngang dài hết bề rộng chuỗi
+      const portraitF = slots[0] && slots[0].fV >= slots[0].fU;
+      totalRail3x6 += portraitF
+        ? ((2 * zRow + 0.1) / cos) * (cols + 1)
+        : (totalU + 0.2) * (rows + 1);
 
     } else {
-      // Mái dốc "có khung sắt" = giàn ÁP MÁI sát mái: rail ngang qua L-feet ~12cm
-      // (KHÔNG có cột trụ D76 — fix khớp hình học mới + phản hồi thực tế)
-      const rowYs = [...new Set(slots.map(s => Math.round(s.y * 1000) / 1000))];
-      const nRails = rowYs.length + 1; // rail tại biên giữa các hàng + 2 biên ngoài
-      totalRail3x6 += nRails * (totalU + 0.1);
-      const nFeetPerRail = Math.max(2, Math.round(totalU / 1.4) + 1);
+      // Mái dốc "có khung sắt" = giàn ÁP MÁI sát mái: rail song song cạnh dài tấm qua L-feet ~12cm
+      // (KHÔNG có cột trụ D76 — fix khớp hình học + phản hồi thực tế)
+      const portraitS = slots[0] && slots[0].fV >= slots[0].fU;
+      const nRails = portraitS ? cols + 1 : rows + 1;
+      const railLenS = portraitS ? totalV + 0.1 : totalU + 0.1;
+      totalRail3x6 += nRails * railLenS;
+      const nFeetPerRail = Math.max(2, Math.round(railLenS / 1.4) + 1);
       numFeet += nRails * nFeetPerRail; // L-feet: tấm đế + chân ngắn cố định 12cm
     }
   }
