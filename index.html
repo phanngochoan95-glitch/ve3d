@@ -3654,6 +3654,10 @@ function prepareBaoGiaPayload() {
     kwp: Number(kwp.toFixed(2)),
     panels: placed,
     roof: state.roofType,
+    roofAreaM2: Array.isArray(state.roofPoly) && state.roofPoly.length >= 3
+      ? +polyAreaM2(state.roofPoly).toFixed(1)
+      : +(state.houseW * state.houseL).toFixed(1), // K6-P2: diện tích vùng mái thật (đa giác vẽ tay) hoặc W×L
+    roofPolyPts: Array.isArray(state.roofPoly) ? state.roofPoly.length : null,
     mount: state.mount,
     dir: state.houseAngle,
     tilt: state.roofType === 'bang' ? state.rackTilt : state.roofAngle,
@@ -3716,6 +3720,7 @@ function getBaoGiaUrl() {
   url.searchParams.set("kwp", payload.kwp.toFixed(2));
   url.searchParams.set("panels", payload.panels);
   url.searchParams.set("roof", payload.roof);
+  url.searchParams.set("roofAreaM2", payload.roofAreaM2); // K6-P2: diện tích vùng mái thật để VCC đối chiếu
   url.searchParams.set("mount", payload.mount);
   url.searchParams.set("dir", payload.dir);
   url.searchParams.set("tilt", payload.tilt);
@@ -3927,7 +3932,7 @@ function renderPlanCanvas() {
     if (sel && sel.visible) { sel.visible = false; hidden.push(sel); }
   }
   for (const o of houseGroup.children) {
-    if (o.userData && (o.userData.isSetbackLine || o.userData.isDimLine) && o.visible) { o.visible = false; hidden.push(o); }
+    if (o.userData && (o.userData.isSetbackLine || o.userData.isDimLine || o.userData.isPolyOutline) && o.visible) { o.visible = false; hidden.push(o); }
   }
 
   // khung nhìn: bounding box cảnh quy về hệ trục NHÀ (xoay ngược houseAngle)
@@ -3972,6 +3977,27 @@ function renderPlanCanvas() {
   const pxPerM = out.width / (cam.right - cam.left);
   const pxX = (mx) => out.width / 2 + mx * pxPerM;   // toạ độ TRỤC NHÀ (gốc tại tâm nhà)
   const pxY = (mz) => out.height / 2 + mz * pxPerM;
+
+  // K6-P2: tô vùng mái đa giác + nhãn diện tích (trước nét ghi kích thước để không đè)
+  if (Array.isArray(state.roofPoly) && state.roofPoly.length >= 3) {
+    const poly = state.roofPoly;
+    ctx.beginPath();
+    poly.forEach((p, i) => { const X = pxX(p.x), Y = pxY(p.z); if (i) ctx.lineTo(X, Y); else ctx.moveTo(X, Y); });
+    ctx.closePath();
+    ctx.fillStyle = "rgba(255,146,43,.22)";
+    ctx.fill();
+    ctx.strokeStyle = "#e8590c";
+    ctx.lineWidth = Math.max(2, pxPerM * 0.05);
+    ctx.stroke();
+    let tcx = 0, tcz = 0;
+    for (const p of poly) { tcx += p.x; tcz += p.z; }
+    tcx /= poly.length; tcz /= poly.length;
+    const areaTxt = `Vùng mái ${polyAreaM2(poly).toFixed(1)} m²`;
+    ctx.font = `700 ${Math.max(12, pxPerM * 0.14)}px "Segoe UI", system-ui, Arial, sans-serif`;
+    ctx.fillStyle = "#c2410c";
+    ctx.textBaseline = "middle";
+    ctx.fillText(areaTxt, pxX(tcx) - ctx.measureText(areaTxt).width / 2, pxY(tcz));
+  }
 
   // nét ghi kích thước nhà W×L (viền nhà nét đứt)
   const W = state.houseW, L = state.houseL;
@@ -4112,6 +4138,125 @@ $("planBtn").onclick = () => {
     notify("✓ Đã tải bản vẽ mặt bằng 2D (kích thước + thước tỷ lệ)", "ok");
   }, "image/png");
 };
+
+// ===== K6-P2: editor vẽ vùng mái đa giác (snap 0,25 m, diện tích + sức chứa live) =====
+const polyCanvas = $("polyCanvas"), polyInfo = $("polyInfo");
+let polyDraft = [], polyHover = null;
+const polyCssW = 544, polyCssH = 420;
+function polyMetrics() {
+  const s = Math.min(polyCssW / (state.houseW + 2.2), polyCssH / (state.houseL + 2.2));
+  return { s, ox: polyCssW / 2, oy: polyCssH / 2 };
+}
+const polyToPx = (p) => { const m = polyMetrics(); return { x: m.ox + p.x * m.s, y: m.oy + p.z * m.s }; };
+const polyToM = (px, py) => {
+  const m = polyMetrics();
+  return { x: Math.round(((px - m.ox) / m.s) * 4) / 4, z: Math.round(((py - m.oy) / m.s) * 4) / 4 };
+};
+function polyDraw() {
+  const ctx = polyCanvas.getContext("2d");
+  ctx.setTransform(2, 0, 0, 2, 0, 0); // backing 1088×840 = 2× CSS (nét sắc trên màn retina)
+  ctx.clearRect(0, 0, polyCssW, polyCssH);
+  ctx.fillStyle = "#f8fafc";
+  ctx.fillRect(0, 0, polyCssW, polyCssH);
+  const m = polyMetrics();
+  // lưới 1 m trong khung nhà
+  ctx.strokeStyle = "#e2e8f0";
+  ctx.lineWidth = 1;
+  for (let gx = Math.ceil(-state.houseW / 2); gx <= state.houseW / 2; gx++) {
+    const p = polyToPx({ x: gx, z: -state.houseL / 2 }), q = polyToPx({ x: gx, z: state.houseL / 2 });
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+  }
+  for (let gz = Math.ceil(-state.houseL / 2); gz <= state.houseL / 2; gz++) {
+    const p = polyToPx({ x: -state.houseW / 2, z: gz }), q = polyToPx({ x: state.houseW / 2, z: gz });
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+  }
+  // khung mái W×L nét đứt
+  const a = polyToPx({ x: -state.houseW / 2, z: -state.houseL / 2 }), b = polyToPx({ x: state.houseW / 2, z: state.houseL / 2 });
+  ctx.strokeStyle = "#94a3b8";
+  ctx.setLineDash([6, 5]);
+  ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#64748b";
+  ctx.font = "600 11px system-ui, sans-serif";
+  ctx.fillText(`${state.houseW} × ${state.houseL} m`, a.x + 4, a.y - 6);
+  // đa giác nháp (+ đường dự thưởng theo con trỏ)
+  const pts = polyHover ? polyDraft.concat([polyHover]) : polyDraft;
+  if (pts.length) {
+    ctx.beginPath();
+    const p0 = polyToPx(pts[0]);
+    ctx.moveTo(p0.x, p0.y);
+    for (let i = 1; i < pts.length; i++) { const p = polyToPx(pts[i]); ctx.lineTo(p.x, p.y); }
+    if (polyDraft.length >= 3) { ctx.closePath(); ctx.fillStyle = "rgba(255,146,43,.18)"; ctx.fill(); }
+    ctx.strokeStyle = "#e8590c";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    for (let i = 0; i < polyDraft.length; i++) {
+      const p = polyToPx(polyDraft[i]);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, i === 0 ? 5 : 3.5, 0, 7);
+      ctx.fillStyle = i === 0 ? "#e8590c" : "#1f2937";
+      ctx.fill();
+    }
+  }
+  // thước tỷ lệ 2 m
+  const seg = 2 * m.s, bx = polyCssW - 14 - seg, by = polyCssH - 12;
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(bx, by); ctx.lineTo(bx + seg, by);
+  ctx.moveTo(bx, by - 4); ctx.lineTo(bx, by + 4);
+  ctx.moveTo(bx + seg, by - 4); ctx.lineTo(bx + seg, by + 4);
+  ctx.stroke();
+  ctx.fillText("2 m", bx + seg + 5, by + 3);
+  // readout: diện tích + sức chứa ước tính (hệ số lấp 80%)
+  const area = polyAreaM2(polyDraft);
+  const est = area > 0 ? Math.floor(area / (panelDims().pL * panelDims().pW) * 0.8) : 0;
+  polyInfo.innerHTML = polyDraft.length < 3
+    ? `Đã chọn <b>${polyDraft.length}</b> điểm — cần ≥ 3 điểm để khép vùng (click gần điểm đầu để khép)`
+    : `Vùng mái: <b>${area.toFixed(1)} m²</b> · ${polyDraft.length} điểm · sức chứa ước tính <b>${est} tấm (≈ ${fmtKw(kwOf(est))} kWp)</b> với hệ số lấp 80%`;
+}
+function openPolyEditor() {
+  polyDraft = Array.isArray(state.roofPoly) ? state.roofPoly.map(p => ({ ...p })) : [];
+  polyHover = null;
+  $("polyModal").style.display = "flex";
+  polyDraw();
+}
+$("polyBtn").onclick = openPolyEditor;
+$("polyCancel").onclick = () => { $("polyModal").style.display = "none"; };
+$("polyUndo").onclick = () => { polyDraft.pop(); polyDraw(); };
+$("polyClear").onclick = () => { polyDraft = []; polyDraw(); };
+$("polyRect").onclick = () => { // về nguyên mái: đa giác trùng khít hình chữ nhật W×L
+  const W = state.houseW / 2, L = state.houseL / 2;
+  polyDraft = [{ x: -W, z: -L }, { x: W, z: -L }, { x: W, z: L }, { x: -W, z: L }];
+  polyDraw();
+};
+$("polySave").onclick = () => {
+  const pts = polyDraft.slice();
+  // bỏ điểm cuối nếu trùng điểm đầu (người dùng khép vòng thủ công)
+  if (pts.length >= 4 && Math.abs(pts[0].x - pts[pts.length - 1].x) < 1e-6 && Math.abs(pts[0].z - pts[pts.length - 1].z) < 1e-6) pts.pop();
+  if (!applyRoofPoly(pts)) { notify("Cần ít nhất 3 điểm khác nhau để khép vùng mái.", "warn"); return; }
+  $("polyModal").style.display = "none";
+};
+polyCanvas.addEventListener("click", (e) => {
+  const r = polyCanvas.getBoundingClientRect();
+  const p = polyToM(e.clientX - r.left, e.clientY - r.top);
+  if (Math.abs(p.x) > state.houseW / 2 + 1e-6 || Math.abs(p.z) > state.houseL / 2 + 1e-6) return; // chỉ vẽ trong khung nhà
+  if (polyDraft.length >= 3 && Math.hypot(p.x - polyDraft[0].x, p.z - polyDraft[0].z) < 0.5) {
+    polyDraft.push({ ...polyDraft[0] }); // khép vòng = click gần điểm đầu
+    polyHover = null;
+    polyDraw();
+    return;
+  }
+  polyDraft.push(p);
+  polyDraw();
+});
+polyCanvas.addEventListener("mousemove", (e) => {
+  const r = polyCanvas.getBoundingClientRect();
+  polyHover = polyToM(e.clientX - r.left, e.clientY - r.top);
+  polyDraw();
+});
+polyCanvas.addEventListener("mouseleave", () => { polyHover = null; polyDraw(); });
+polyCanvas.addEventListener("dblclick", (e) => { e.preventDefault(); $("polySave").click(); });
 function exportPDF() {
   const canvasOut = renderSnapshotCanvas();
   $("printImg").src = canvasOut.toDataURL("image/png");
@@ -4434,8 +4579,9 @@ renderer.setAnimationLoop(() => {
 window.__solar = {
   state, getSlopes: () => slopes, THREE, renderer, scene, camera, controls, houseGroup, stringOrigin,
   layoutSlots, placedPanels, roofCapacity, roofUsed, planPlacement, repackSlope, addString, notify,
-  collectState, applyState, undo, redo, exportCSV, exportPDF, setCameraView, shareURL,
+  collectState, applyState, undo, redo, exportCSV, exportPDF, setCameraView, shareURL, getBaoGiaUrl,
   refreshAll, buildHouse, calcSolarFactor, checkSetbackViolations, stringElectricalCheck, calcShadingLossPct, sunDirAt, getBonNuocPos, getTumPos, flatRoofY, renderPlanCanvas, captureStandardSnapshots,
+  polyAreaM2, pointInPoly, polySlotOK, applyRoofPoly, rebuildPolyOutline,
   getHistory: () => ({ hist, histIdx }),
   textures: () => renderer.info.memory,
 };
