@@ -352,6 +352,27 @@
           <button type="button" class="frame-action" id="clearBtn">🗑 Xoá tất cả</button>
         </div>
         <button type="button" class="frame-action" id="autoBtn" style="margin-top:8px">⚡ Xếp tự động (lấp đầy mái trống)</button>
+        <button type="button" class="frame-action" id="polyBtn" style="margin-top:8px" title="K6-P2: vẽ vùng mái THẬT dạng đa giác (chữ L, mái cụt…) — xếp pin chỉ nằm trong vùng này">✏️ Vẽ vùng mái đa giác</button>
+      </div>
+
+      <!-- K6-P2: modal vẽ vùng mái đa giác -->
+      <div id="polyModal" style="display:none;position:fixed;inset:0;background:rgba(8,15,25,.55);z-index:80;align-items:center;justify-content:center">
+        <div style="background:#fff;border-radius:14px;padding:14px 16px;width:min(94vw,620px);box-shadow:0 20px 60px rgba(0,0,0,.35)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
+            <b style="font-size:14px">✏️ Vẽ vùng mái thật (đa giác)</b>
+            <span style="font-size:11px;color:#64748b">Click thêm điểm · click điểm đầu để khép · snap 0,25 m</span>
+          </div>
+          <canvas id="polyCanvas" width="1088" height="840" style="width:544px;height:420px;max-width:100%;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;cursor:crosshair;display:block;margin:0 auto"></canvas>
+          <div id="polyInfo" style="margin-top:8px;font-size:12.5px;font-weight:700;color:#0f172a">Chưa có điểm nào</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center">
+            <button type="button" class="frame-action" id="polyUndo">↩ Hoàn tác điểm</button>
+            <button type="button" class="frame-action" id="polyClear">🗑 Xoá hết</button>
+            <button type="button" class="frame-action" id="polyRect">▭ Về nguyên mái W×L</button>
+            <span style="flex:1"></span>
+            <button type="button" class="frame-action active" id="polySave">✓ Lưu &amp; áp dụng</button>
+            <button type="button" class="frame-action" id="polyCancel">✕ Huỷ</button>
+          </div>
+        </div>
       </div>
 
       <div class="field" id="stringsField" style="display:none">
@@ -455,15 +476,15 @@
         </div>
       </details>
 
-      <details class="field" id="elecField">
-        <summary>⚡ Kiểm tra điện chuỗi (Voc / MPPT)</summary>
+      <details class="field" id="elecField" open>
+        <summary>⚡ Kiểm tra điện chuỗi (Voc / MPPT) — tự động áp dụng</summary>
         <div style="padding:8px 2px;display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;color:#36424e">
-          <div><label style="display:block;font-size:10px;color:#718096">Voc tấm (V)</label><input type="number" id="panelVocInput" step="0.01" min="1" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
-          <div><label style="display:block;font-size:10px;color:#718096">Vmp tấm (V)</label><input type="number" id="panelVmpInput" step="0.01" min="1" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
-          <div><label style="display:block;font-size:10px;color:#718096">MPPT min (V)</label><input type="number" id="mpptMinInput" step="5" min="0" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
-          <div><label style="display:block;font-size:10px;color:#718096">MPPT max (V)</label><input type="number" id="mpptMaxInput" step="5" min="0" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
+          <div><label style="display:block;font-size:10px;color:#718096">Voc tấm (V)</label><input type="number" id="panelVocInput" value="52.66" step="0.01" min="1" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
+          <div><label style="display:block;font-size:10px;color:#718096">Vmp tấm (V)</label><input type="number" id="panelVmpInput" value="44.33" step="0.01" min="1" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
+          <div><label style="display:block;font-size:10px;color:#718096">MPPT min (V)</label><input type="number" id="mpptMinInput" value="150" step="5" min="0" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
+          <div><label style="display:block;font-size:10px;color:#718096">MPPT max (V)</label><input type="number" id="mpptMaxInput" value="850" step="5" min="0" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
         </div>
-        <div style="font-size:10.5px;color:#718096;padding:2px 2px 0">Mặc định datasheet LONGi LR7-72HGD 620M (Voc 52.66V / Vmp 44.33V, hệ số nhiệt Voc −0.30%/°C). Kiểm tra: Voc lạnh = n×Voc×1.05 ≤ MPPT max · Vmp nóng = n×Vmp×0.88 ≥ MPPT min.</div>
+        <div style="font-size:10.5px;color:#718096;padding:2px 2px 0">Kiểm tra <b>TỰ ĐỘNG chạy cho mọi chuỗi</b> với dữ liệu mặc định datasheet LONGi LR7-72HGD 620M (Voc 52.66V / Vmp 44.33V, hệ số nhiệt Voc −0.30%/°C) và cửa sổ MPPT 150–850V — chỉ chỉnh lại khi dùng tấm pin / inverter khác. Công thức: Voc lạnh = n×Voc×1.05 ≤ MPPT max · Vmp nóng = n×Vmp×0.88 ≥ MPPT min.</div>
       </details>
 
       <details class="field" id="ioField" open>
@@ -620,6 +641,7 @@ const DEFAULTS = {
   mpptMax: 850,         // MPPT max (V) — Voc lạnh của chuỗi không được vượt
   panelVoc: 52.66,      // Voc tấm (V) — datasheet LONGi LR7-72HGD 620M (2023-09 V05)
   panelVmp: 44.33,      // Vmp tấm (V) — datasheet LONGi LR7-72HGD 620M
+  roofPoly: null,       // K6-P2: vùng mái ĐA GIÁC vẽ tay [{x,z},…] (m, toạ độ nhà) — vùng mái THẬT dùng đặt pin; null = dùng nguyên mái W×L
 };
 const state = {
   ...DEFAULTS,
@@ -1607,6 +1629,95 @@ function pointInRoof(slope, x, y, margin) {
   const halfU = tapered ? slope.uHalfAt(y) - margin : slope.uLen / 2 - margin;
   return Math.abs(x) <= halfU + 1e-6;
 }
+// ===== K6 phase 2: VÙNG MÁI ĐA GIÁC (vẽ tay trên mặt bằng, toạ độ nhà xz) =====
+// state.roofPoly = [{x,z},…] — vùng mái THẬT dùng đặt pin; null = dùng nguyên mái W×L.
+// Cổng chặn duy nhất nằm trong insideRoof() → auto-fill, kéo tay, repack đều tôn trọng tự động.
+function polyAreaM2(pts) {
+  if (!Array.isArray(pts) || pts.length < 3) return 0;
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    a += p.x * q.z - q.x * p.z;
+  }
+  return Math.abs(a) / 2;
+}
+function pointInPoly(x, z, pts) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const pi = pts[i], pj = pts[j];
+    if ((pi.z > z) !== (pj.z > z) && x < ((pj.x - pi.x) * (z - pi.z)) / (pj.z - pi.z) + pi.x) inside = !inside;
+  }
+  return inside;
+}
+// khối tấm (khung bao quanh cx,cy trong hệ mặt mái) chiếu về mặt bằng nhà có nằm trong đa giác không —
+// lấy 9 mẫu điểm (4 góc + 4 giữa cạnh + tâm) nên notch lõm nhỏ cũng bị phát hiện
+function polySlotOK(slope, cx, cy, lay, rot = 0) {
+  const poly = state.roofPoly;
+  if (!Array.isArray(poly) || poly.length < 3) return true;
+  const e = (rot % 180) === 0 ? { hu: lay.totalU / 2, hv: lay.totalV / 2 } : rotExtents(lay, rot);
+  const o = slope.origin, u = slope.u, v = slope.v;
+  for (let du = -1; du <= 1; du++) {
+    for (let dv = -1; dv <= 1; dv++) {
+      const su = cx + du * e.hu, sv = cy + dv * e.hv;
+      const hx = o.x + u.x * su + v.x * sv, hz = o.z + u.z * su + v.z * sv;
+      if (!pointInPoly(hx, hz, poly)) return false;
+    }
+  }
+  return true;
+}
+// áp dụng vùng mái đa giác (editor Save / test / URL): lưu state, TẮT chuỗi nằm ngoài,
+// dựng viền 3D và làm mới UI. Trả về true nếu đa giác hợp lệ (≥3 điểm).
+function applyRoofPoly(pts) {
+  const ok = Array.isArray(pts) && pts.length >= 3 && pts.every(p => p && Number.isFinite(+p.x) && Number.isFinite(+p.z));
+  state.roofPoly = ok ? pts.map(p => ({ x: +p.x, z: +p.z })) : null;
+  if (ok) {
+    let off = 0;
+    for (const s of state.strings) {
+      const slope = slopeByKey(s.slopeKey);
+      if (!slope) continue;
+      const lay = layoutSlots(s.count, s.dir, slope);
+      if (lay && !polySlotOK(slope, s.cx, s.cy, lay, s.rot)) {
+        s.disabled = Array.from({ length: s.count }, (_, i) => i);
+        off++;
+      }
+    }
+    if (off) notify(`${off} chuỗi nằm ngoài vùng mái đa giác — đã tắt. Bấm ⚡ Xếp tự động để xếp lại trong vùng mới.`, "warn");
+    else notify(`✓ Đã áp dụng vùng mái đa giác (${polyAreaM2(state.roofPoly).toFixed(1)} m²) — bấm ⚡ Xếp tự động để xếp pin trong vùng mới.`, "ok");
+  }
+  rebuildPolyOutline();
+  refreshAll();
+  return !!ok;
+}
+// viền 3D + lớp phủ vùng đa giác trên mái (ẩn trong bản vẽ 2D — bên đó có nét vẽ riêng)
+let polyOutlineGroup = null;
+function rebuildPolyOutline() {
+  if (polyOutlineGroup) {
+    houseGroup.remove(polyOutlineGroup);
+    polyOutlineGroup.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+    });
+    polyOutlineGroup = null;
+  }
+  const poly = state.roofPoly;
+  if (!Array.isArray(poly) || poly.length < 3) return;
+  const yTop = slopes.length ? Math.max(...slopes.map(s => s.origin.y)) + 0.1 : state.wallH + 0.1;
+  const grp = new THREE.Group();
+  grp.userData.isPolyOutline = true;
+  const lineGeo = new THREE.BufferGeometry().setFromPoints(
+    poly.map(p => new THREE.Vector3(p.x, yTop, p.z)).concat([new THREE.Vector3(poly[0].x, yTop, poly[0].z)]));
+  grp.add(new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0xe8590c })));
+  // lớp phủ mờ: Shape dựng trên mặt XY với y_shape = −z, xoay −90° quanh X để hạ về mặt ngang
+  const shape = new THREE.Shape(poly.map(p => new THREE.Vector2(p.x, -p.z)));
+  const fillMesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({
+    color: 0xff922b, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false
+  }));
+  fillMesh.rotation.x = -Math.PI / 2;
+  fillMesh.position.y = yTop - 0.02;
+  grp.add(fillMesh);
+  polyOutlineGroup = grp;
+  houseGroup.add(grp);
+}
 // khối tấm có nằm gọn trong mặt mái không (mái Nhật: xét bề rộng tại đúng hàng của tấm)
 // rot = 0 → kiểm tra từng hàng (chính xác với mái hình thang); rot ≠ 0 → khung bao xoay, xét 4 góc
 function insideRoof(slope, cx, cy, lay, rot = 0) {
@@ -1616,8 +1727,9 @@ function insideRoof(slope, cx, cy, lay, rot = 0) {
     if (lay.totalV > slope.vLen - 2 * margin + 1e-6) return false;
     const tapered = 2 * slope.uHalfAt(slope.vLen / 2) < slope.uLen - 0.01;
     if (!tapered) {
-      return Math.abs(cx) + lay.totalU / 2 <= slope.uLen / 2 - margin + 1e-6
+      const fits = Math.abs(cx) + lay.totalU / 2 <= slope.uLen / 2 - margin + 1e-6
           && Math.abs(cy) + lay.totalV / 2 <= slope.vLen / 2 - margin + 1e-6;
+      return fits && polySlotOK(slope, cx, cy, lay, rot); // K6-P2: tôn trọng vùng mái đa giác (nếu có)
     }
     for (const s of lay.slots) {
       const vTop = cy + s.y + s.fV / 2;
@@ -1625,14 +1737,14 @@ function insideRoof(slope, cx, cy, lay, rot = 0) {
       if (cy + s.y - s.fV / 2 < -slope.vLen / 2 + margin - 1e-6) return false;
       if (Math.abs(cx + s.x) + s.fU / 2 > slope.uHalfAt(vTop) - margin + 1e-6) return false;
     }
-    return true;
+    return polySlotOK(slope, cx, cy, lay, rot); // K6-P2: tôn trọng vùng mái đa giác (nếu có)
   }
   // mái là đa giác lồi → khối chữ nhật xoay nằm trong mái khi và chỉ khi 4 góc khung bao nằm trong
   const e = rotExtents(lay, rot);
   for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
     if (!pointInRoof(slope, cx + sx * e.hu, cy + sy * e.hv, margin)) return false;
   }
-  return true;
+  return polySlotOK(slope, cx, cy, lay, rot); // K6-P2: tôn trọng vùng mái đa giác (nếu có)
 }
 // tìm vị trí trống cho khối `lay` tấm: ưu tiên giữa mái rồi mới dạt ra (mái Nhật hẹp dần
 // lên đỉnh nên đặt lệch lên trên dễ tràn hông; quét từ giữa ra luôn chọn được chỗ rộng nhất)
@@ -2578,12 +2690,14 @@ function renderSummary() {
   const totalKw = kwOf(nPanels);
   const solarFactor = calcSolarFactor();
   const monthlyKwh = Math.round(totalKw * YIELD_KWH_PER_KWP_DAY * solarFactor * 30);
+  const elec = stringElectricalCheck(); // K4-mini: luôn chạy với dữ liệu mặc định datasheet — không phụ thuộc người dùng nhập
   let html = `Tổng: <b>${state.strings.length} chuỗi</b> · <b>${nPanels} tấm</b> · <span class="kw-value">≈ ${fmtKw(totalKw)} kWp</span>`;
   if (nPanels > 0) {
     html += ` · <span style="font-weight:700;color:#1b7a4b;background:#eafaf1;padding:1px 6px;border-radius:6px;border:1px solid #8fd9b0">≈ ${monthlyKwh.toLocaleString("vi-VN")} kWh/tháng</span>`;
     html += ` · <span style="font-size:11px;font-weight:600;color:#0369a1;background:#f0f9ff;padding:1px 6px;border-radius:6px;border:1px solid #bae6fd">Đón nắng: ${(solarFactor * 100).toFixed(0)}%</span>`;
     const shadePct = calcShadingLossPct();
     if (shadePct > 0) html += ` · <span style="font-size:11px;font-weight:600;color:#7c2d12;background:#fff7ed;padding:1px 6px;border-radius:6px;border:1px solid #fed7aa">Che bóng (đông chí): ~${shadePct}%</span>`;
+    if (!elec.overV.length && !elec.underV.length) html += ` · <span style="font-size:11px;font-weight:600;color:#166534;background:#f0fdf4;padding:1px 6px;border-radius:6px;border:1px solid #bbf7d0">⚡ Điện chuỗi ✓ Voc lạnh ≤ ${state.mpptMax ?? 850} V</span>`;
   }
   if (sel) html += `<br>Đang chọn chuỗi ${sel.id}: vị trí <b>${sel.cx.toFixed(1)}, ${sel.cy.toFixed(1)}</b> m`;
   // sức chứa của mái đang nhắm tới — để người dùng thấy trước khi bấm Thêm
@@ -2607,7 +2721,6 @@ function renderSummary() {
     html += `<div style="margin-top:6px;padding:6px 8px;background:#fff1f0;border-radius:6px;border:1px solid #ffa39e;color:#cf1322;font-size:11.5px">⚠️ <b>Hành lang gió bão:</b> Chuỗi <b>${setbackBad.join(", ")}</b> đang đặt sát mép mái (&lt; 0.40m). Khuyên lùi sâu vào trong để chống giông lốc theo tiêu chuẩn xây dựng.</div>`;
   }
   // K4-mini: cảnh báo Voc/MPPT — chống sai báo giá (chuỗi quá dài vượt cửa sổ điện áp inverter)
-  const elec = stringElectricalCheck();
   if (elec.overV.length) {
     html += `<div style="margin-top:6px;padding:6px 8px;background:#fff1f0;border-radius:6px;border:1px solid #ffa39e;color:#cf1322;font-size:11.5px">⚡️ <b>Voc vượt MPPT max:</b> chuỗi <b>${elec.overV.map(o => o.id).join(", ")}</b> — Voc lạnh ~<b>${Math.round(elec.worstV)} V</b> &gt; ${state.mpptMax ?? 850} V. Giảm số tấm nối tiếp hoặc dùng inverter 1500V DC.</div>`;
   }
@@ -2633,6 +2746,7 @@ function refreshAll() {
   renderSelField();
   renderSummary();
   renderSlopeOptions();
+  rebuildPolyOutline(); // K6-P2: viền vùng mái đa giác bám theo mái hiện tại
   if (!applying) scheduleHistory();
 }
 
@@ -2665,6 +2779,8 @@ function collectState() {
     showSetback: !!state.showSetback,
     panelVoc: state.panelVoc ?? 52.66, panelVmp: state.panelVmp ?? 44.33,
     mpptMin: state.mpptMin ?? 150, mpptMax: state.mpptMax ?? 850,
+    roofPoly: Array.isArray(state.roofPoly) && state.roofPoly.length >= 3
+      ? state.roofPoly.map(p => ({ x: +p.x.toFixed(2), z: +p.z.toFixed(2) })) : null,
     newCount: state.newCount, dirChoice: state.dirChoice, slopeKey: state.slopeKey,
     strings: state.strings.map(s => ({
       slopeKey: s.slopeKey, count: s.count, dir: s.dir, rot: s.rot,
@@ -2707,6 +2823,10 @@ function applyState(d) {
   state.panelVmp = clampNum(d.panelVmp, 1, 120, 44.33);
   state.mpptMin = clampNum(d.mpptMin, 0, 1500, 150);
   state.mpptMax = clampNum(d.mpptMax, 0, 1500, 850);
+  // K6-P2: vùng mái đa giác (dữ liệu cũ thiếu trường → null = nguyên mái W×L)
+  state.roofPoly = (Array.isArray(d.roofPoly) && d.roofPoly.length >= 3
+    && d.roofPoly.every(p => p && Number.isFinite(+p.x) && Number.isFinite(+p.z) && Math.abs(+p.x) <= 30 && Math.abs(+p.z) <= 30))
+    ? d.roofPoly.map(p => ({ x: +p.x, z: +p.z })) : null;
   state.newCount = Math.round(clampNum(d.newCount, 1, 60, 9));
   state.dirChoice = d.dirChoice === "ngang" ? "ngang" : "doc";
   state.slopeKey = validKeys.has(d.slopeKey) ? d.slopeKey : null;
