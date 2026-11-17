@@ -2098,14 +2098,17 @@ function makeStringMesh(str) {
       tiltAngle = THREE.MathUtils.degToRad(state.rackTilt ?? 15);
       // Azimuth CỐ ĐỊNH hướng Nam: khung đứng trên mái bằng không quay theo nhà —
       // bù houseAngle bằng quay quanh pháp tuyến (Euler YXZ: az trước, nghiêng sau).
-      // rotation.x=+θ nâng mép +Z_local → nhắm mép cao về BẮC thế giới, mặt pin tự hướng Nam.
-      // (Trước đây tilt.rotation.x quay trong hệ nhà → nhà xoay Bắc là khung hướng Bắc — sai thực tế.)
+      // rotation.x = −θ NÂNG mép +Z_local (ma trận: (0,0,1)→(0,+sinθ,cosθ)) — chú ý
+      // dấu ngược: bản V1.24 dùng +θ là HẠ mép +Z, azPhi đưa nhầm mép hạ về Bắc →
+      // pin quay theo nhà (nhà Bắc → pin BẮC, đánh giá V3 17-11 phát hiện qua pháp tuyến).
+      // Giờ: mép CAO (+Z_local) được azPhi đưa về BẮC thế giới → mặt pin luôn hướng Nam
+      // bất kể houseAngle. Normal kỳ vọng (0, cosθ, +sinθ) — n.z > 0 ở mọi góc nhà.
       const northWorld = new THREE.Vector3(0, 0, -1);
       const northHouse = northWorld.applyAxisAngle(new THREE.Vector3(0, 1, 0), -THREE.MathUtils.degToRad(state.houseAngle));
       const northPlane = northHouse.clone().addScaledVector(slope.n, -northHouse.dot(slope.n)); // chiếu lên mặt mái
-      const azPhi = Math.atan2(northPlane.dot(slope.u), northPlane.dot(w)); // góc đưa +Z_local (mép cao) về Bắc
+      const azPhi = Math.atan2(northPlane.dot(slope.u), northPlane.dot(w)); // góc đưa mép CAO (+Z_local) về Bắc
       tilt.rotation.order = "YXZ";
-      tilt.rotation.set(tiltAngle, azPhi, 0);
+      tilt.rotation.set(-tiltAngle, azPhi, 0);
       const rack = buildFlatRack(g, tilt, totalU, totalV, slots, k);
       lift = rack.lift; selDepth = rack.selH; selY = rack.selY;
     } else {
