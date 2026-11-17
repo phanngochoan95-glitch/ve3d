@@ -1933,6 +1933,9 @@ function buildFlatRack(g, tilt, totalU, totalV, slots, k) {
   const baseH = Math.max(0.2, state.rackH ?? 0.4);
   const yu = baseH * cos + halfZ * sin;           // tâm nâng tại pivot để mép thấp nhất (z = halfZ) cách sàn đúng baseH
   const lift = yu + 0.115;                        // +0.115 = dầm hộp 0.08 nằm giữa đỉnh cột và đáy rail
+  // V1.25: công thức yAt GIỮ NGUYÊN dù tilt.rotation.x lật thành −θ — azPhi(≈π) đưa mép CAO
+  // (+Z_local) về −z hệ group (Bắc) nên cột CAO ở −zRow tự khớp đầu cao rail. Đo thực nghiệm
+  // test-v125 t3: đỉnh cột sát rail ≤ 0.15m; mirror dấu yAt ngược lại làm cột đâm xuyên pin.
   const yAt = z => (yu - z * sin) / cos;          // cao độ đáy rail tại z' hệ group
   const portrait = slots[0] ? slots[0].fV >= slots[0].fU : true; // tấm dọc: cạnh dài chạy theo dốc
   const xsSlot = [...new Set(slots.map(s => Math.round(s.x * 1000) / 1000))].sort((a, b) => a - b);
