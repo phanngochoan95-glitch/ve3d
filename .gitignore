@@ -1,3 +1,4 @@
 tools/run-test-*.mjs
 tools/*.png
 tools/verify-gable-cap-out/
+.taste-skill/
