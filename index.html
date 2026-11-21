@@ -187,8 +187,11 @@
     .panel-close { display: block; }
     .house-dir-overlay { top: 8px; left: 8px; right: 8px; padding: 10px 12px; max-width: calc(100% - 16px); }
     .dir-presets-row { gap: 3px; }
-    .dir-btn { font-size: 10px; padding: 6px 1px; }
-    .cam-btn { font-size: 10px; padding: 6px 2px; }
+    /* P2 (đánh giá V4): tap-target ≥44px chuẩn chạm — trước đây dir/cam 28px, font 10px */
+    .dir-btn { font-size: 11px; padding: 6px 1px; min-height: 44px; }
+    .cam-btn { font-size: 11px; padding: 6px 2px; min-height: 44px; }
+    .overlay-toggle-btn { min-height: 40px; min-width: 40px; }
+    .panel-close { min-width: 40px; min-height: 40px; }
   }
 
   /* Details & Checkbox */
@@ -694,6 +697,7 @@
         <tr><td style="color:#666; padding: 3px 0;">Khoảng cách mép mái:</td><td style="font-weight:600; text-align:right" id="pEdgeMargin">-</td></tr>
         <tr><td style="color:#666; padding: 3px 0;">Kiểm tra điện chuỗi:</td><td style="font-weight:600; text-align:right" id="pElecCheck">-</td></tr>
         <tr id="pShadingRow" style="display:none"><td style="color:#666; padding: 3px 0;">Suy hao che bóng (đông chí):</td><td style="font-weight:600; text-align:right; color:#c2410c" id="pShadingNote">-</td></tr>
+        <tr id="pBifacialRow" style="display:none"><td style="color:#666; padding: 3px 0;">Bifacial gain (mặt lưng, khung mái bằng):</td><td style="font-weight:600; text-align:right; color:#047857" id="pBifacialNote">-</td></tr>
       </table>
     </div>
 
@@ -3074,17 +3078,39 @@ function syncOptTiltBadge() {
   }
 }
 
+// #2 bifacial gain: tấm LONGi 2 mặt kính (bifaciality 80±5%) hứng thêm sáng phản xạ từ nền dưới.
+// Chỉ có ý nghĩa khi KHUNG NÂNG CAO tấm trên dốc PHẲNG (khung mái bằng); áp mái/FLUSH mặt lưng bị
+// mái che kín → 0. Giả định albedo ~0.25 (sân thượng bê tông/sơn sáng); giàn càng cao mặt lưng
+// càng nhận nhiều sáng: 0.4m→3% · 0.6m→5% · 1.0m→8% · ≥1.25m→10% (trần ngành ~5–12%).
+function calcBifacialGainPct() {
+  if (state.mount !== "khungsat") return 0;
+  const curve = THREE.MathUtils.clamp(Math.round((state.rackH ?? 0.4) * 8), 0, 10);
+  let flat = 0, all = 0;
+  for (const s of state.strings) {
+    const n = placedPanels(s);
+    if (n <= 0) continue;
+    const slope = slopeByKey(s.slopeKey);
+    if (!slope) continue;
+    all += n;
+    if (slope.n.y > 0.9) flat += n; // chỉ tấm trên dốc PHẲNG được lợi
+  }
+  if (!all) return 0;
+  return Math.round(curve * flat / all);
+}
+
 function renderSummary() {
   const nPanels = state.strings.reduce((a, s) => a + placedPanels(s), 0);
   const sel = state.strings.find(s => s.id === state.selectedId);
   const totalKw = kwOf(nPanels);
   const solarFactor = calcSolarFactor();
-  const monthlyKwh = Math.round(totalKw * YIELD_KWH_PER_KWP_DAY * solarFactor * 30);
+  const bif = calcBifacialGainPct(); // #2: +X% sản lượng từ mặt lưng tấm 2 mặt kính (khung mái bằng)
+  const monthlyKwh = Math.round(totalKw * YIELD_KWH_PER_KWP_DAY * solarFactor * (1 + bif / 100) * 30);
   const elec = stringElectricalCheck(); // K4-mini: luôn chạy với dữ liệu mặc định datasheet — không phụ thuộc người dùng nhập
   let html = `Tổng: <b>${state.strings.length} chuỗi</b> · <b>${nPanels} tấm</b> · <span class="kw-value">≈ ${fmtKw(totalKw)} kWp</span>`;
   if (nPanels > 0) {
     html += ` · <span style="font-weight:700;color:#1b7a4b;background:#eafaf1;padding:1px 6px;border-radius:6px;border:1px solid #8fd9b0">≈ ${monthlyKwh.toLocaleString("vi-VN")} kWh/tháng</span>`;
     html += ` · <span style="font-size:11px;font-weight:600;color:#0369a1;background:#f0f9ff;padding:1px 6px;border-radius:6px;border:1px solid #bae6fd">Đón nắng: ${(solarFactor * 100).toFixed(0)}%</span>`;
+    if (bif > 0) html += ` · <span style="font-size:11px;font-weight:700;color:#065f46;background:#ecfdf5;padding:1px 6px;border-radius:6px;border:1px solid #a7f3d0">☀ Bifacial +${bif}%</span>`;
     const shadePct = calcShadingLossPct();
     if (shadePct > 0) html += ` · <span style="font-size:11px;font-weight:600;color:#7c2d12;background:#fff7ed;padding:1px 6px;border-radius:6px;border:1px solid #fed7aa">Che bóng (đông chí): ~${shadePct}%</span>`;
     if (!elec.overV.length && !elec.underV.length) html += ` · <span style="font-size:11px;font-weight:600;color:#166534;background:#f0fdf4;padding:1px 6px;border-radius:6px;border:1px solid #bbf7d0">⚡ Điện chuỗi ✓ Voc lạnh ≤ ${state.mpptMax ?? 850} V</span>`;
@@ -3468,6 +3494,8 @@ function exportCSV() {
   push(["Sản lượng dự kiến", `${monthlyKwh} kWh/tháng (Đón quang năng ${(sf * 100).toFixed(0)}%)`]);
   const shadePct = calcShadingLossPct();
   push(["Suy hao che bóng", shadePct > 0 ? `~${shadePct}% (quét quỹ đạo 6-18h ngày đông chí, trọng số năng lượng)` : "Không có vật cản"]);
+  const bifCsv = calcBifacialGainPct();
+  push(["Bifacial gain", bifCsv > 0 ? `+${bifCsv}% (khung mái bằng ${state.rackH ?? 0.4} m, albedo ~0.25)` : "Không áp dụng (áp mái / mặt lưng bị che)"]);
   const elec = stringElectricalCheck();
   push(["Kiểm tra điện chuỗi", total > 0
     ? (elec.overV.length
@@ -4101,6 +4129,7 @@ function prepareBaoGiaPayload() {
     l: state.houseL,
     bom: bomSummary,
     solarFactorPct: Math.round(calcSolarFactor() * 100), // hệ số đón nắng theo hướng×nghiêng — VCC dùng đối chiếu (nguồn sự thật sản lượng là bảng 63 tỉnh bên VCC)
+    bifacialGainPct: calcBifacialGainPct(), // #2: +% mặt lưng tấm 2 mặt kính (khung mái bằng) — VCC tự quyết định có nhân vào sản lượng hay không
     shadingLossPct: calcShadingLossPct(),
     stringVocMaxV: (() => { const e = stringElectricalCheck(); return e.worstV ? Math.round(e.worstV) : null; })(),
     mpptMin: state.mpptMin ?? 150,
@@ -4776,7 +4805,10 @@ function exportPDF() {
   $("pTotalPanels").textContent = `${totalPanels} tấm`;
   $("pTotalKw").textContent = `≈ ${fmtKw(totalKw)} kWp`;
   const sf = calcSolarFactor();
-  $("pMonthlyYield").textContent = `≈ ${Math.round(totalKw * YIELD_KWH_PER_KWP_DAY * sf * 30).toLocaleString("vi-VN")} kWh/tháng (Đón quang năng: ${(sf * 100).toFixed(0)}%)`;
+  const bifPdf = calcBifacialGainPct();
+  $("pMonthlyYield").textContent = `≈ ${Math.round(totalKw * YIELD_KWH_PER_KWP_DAY * sf * (1 + bifPdf / 100) * 30).toLocaleString("vi-VN")} kWh/tháng (Đón quang năng: ${(sf * 100).toFixed(0)}%${bifPdf > 0 ? ` · Bifacial +${bifPdf}%` : ""})`;
+  if ($("pBifacialRow")) $("pBifacialRow").style.display = bifPdf > 0 ? "" : "none";
+  if ($("pBifacialNote")) $("pBifacialNote").textContent = bifPdf > 0 ? `+${bifPdf}% (albedo ~0.25, giàn ${state.rackH ?? 0.4} m)` : "—";
   const elec = stringElectricalCheck();
   $("pElecCheck").textContent = totalPanels > 0
     ? `Voc lạnh tối đa ~${Math.round(elec.worstV)} V (MPPT ${state.mpptMin ?? 150}–${state.mpptMax ?? 850} V)${elec.overV.length ? " ⚠ VƯỢT" : " ✓"}`
@@ -5005,6 +5037,8 @@ updateCustomFields();
       buildHouse();
 
       const kwpIn = params.has('kwp') ? parseFloat(params.get('kwp')) : null;
+      // P3-1 (đánh giá V4): kwp từ VCC cũng là MỤC TIÊU — shortfall phải cảnh báo khi mái không đủ
+      if (kwpIn && kwpIn > 0 && kwpIn <= 100) state.targetKwp = kwpIn;
       const targetPanels = params.has('panels') 
         ? parseInt(params.get('panels'), 10) 
         : (kwpIn ? Math.ceil((kwpIn * 1000) / 620) : null);
@@ -5094,7 +5128,7 @@ window.__solar = {
   state, getSlopes: () => slopes, THREE, renderer, scene, camera, controls, houseGroup, stringOrigin,
   layoutSlots, placedPanels, roofCapacity, roofUsed, planPlacement, repackSlope, addString, notify,
   collectState, applyState, undo, redo, exportCSV, exportPDF, setCameraView, cameraPoseFor, shareURL, getBaoGiaUrl,
-  refreshAll, buildHouse, calcSolarFactor, checkSetbackViolations, stringElectricalCheck, calcShadingLossPct, sunDirAt, getBonNuocPos, getTumPos, flatRoofY, renderPlanCanvas, captureStandardSnapshots,
+  refreshAll, buildHouse, calcSolarFactor, calcBifacialGainPct, checkSetbackViolations, stringElectricalCheck, calcShadingLossPct, sunDirAt, getBonNuocPos, getTumPos, flatRoofY, renderPlanCanvas, captureStandardSnapshots,
   polyAreaM2, pointInPoly, polySlotOK, applyRoofPoly, rebuildPolyOutline, roofPlanAreaM2, getHoverStringId: () => hoverStringId, hoverBoxVisible: () => hoverBox.visible, sunPathGroup: () => sunPathGroup,
   getHistory: () => ({ hist, histIdx }),
   textures: () => renderer.info.memory,

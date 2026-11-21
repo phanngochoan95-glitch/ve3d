@@ -259,8 +259,8 @@ async function main() {
     dirBtnFont: getComputedStyle(document.querySelector('.dir-btn')).fontSize,
     dirBtnH: Math.round(document.querySelector('.dir-btn').getBoundingClientRect().height)
   })`);
-  check('J. Mobile: FAB hiện, panel không entrance, nút hướng nhà chạm được (chuẩn ≥44px → FAIL nếu <36)',
-    mob.fab && (mob.anim === 'none' || mob.anim === '') && mob.dirBtnH >= 36, JSON.stringify(mob));
+  check('J. Mobile: FAB hiện, panel không entrance, nút hướng nhà chạm được (chuẩn ≥44px → FAIL nếu <40, P2 cũ đã vá min-height 44px)',
+    mob.fab && (mob.anim === 'none' || mob.anim === '') && mob.dirBtnH >= 40, JSON.stringify(mob));
   await shot('screenshot_evalv4_mobile.png');
   await send('Emulation.clearDeviceMetricsOverride');
 

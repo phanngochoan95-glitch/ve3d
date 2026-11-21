@@ -145,6 +145,34 @@ server.listen(8134, '127.0.0.1', async () => {
     })()`);
     check('T3 poly ▭ Nguyên mái: hiện m² + sức chứa ước tính (tôn 9×11 ≈ 115.6 m²)', t3.okFull && t3.area > 110 && t3.area < 125 && t3.closed, JSON.stringify(t3));
 
+    // ===== T4. Bifacial gain (#2): chỉ khung mái bằng, theo rackH, theo tỉ lệ tấm trên dốc phẳng =====
+    const bif = await evalJson(`(function(){
+      const S = window.__solar;
+      const set = (o) => { S.applyState({ ...S.collectState(), targetKwp: null, strings: [], ...o }); S.buildHouse(); S.refreshAll(); document.getElementById('autoBtn').click(); return S.calcBifacialGainPct(); };
+      const gApmai = set({ roofType: 'bang', mount: 'apmai' });
+      const g04 = set({ roofType: 'bang', mount: 'khungsat', rackH: 0.4 });
+      const g10 = set({ roofType: 'bang', mount: 'khungsat', rackH: 1.0 });
+      const chip = document.getElementById('summary').textContent.includes('☀ Bifacial +8%');
+      const gHaiDoc = set({ roofType: 'hai_doc_bang', mount: 'khungsat', rackH: 1.0 });
+      return JSON.stringify({ gApmai, g04, g10, chip, gHaiDoc });
+    })()`);
+    check('T4 bifacial: apmai=0 · khung 0.4m=3% · 1.0m=8% + chip · hai_doc_bang chỉ phần dải bằng (0<g<8)',
+      bif.gApmai === 0 && bif.g04 === 3 && bif.g10 === 8 && bif.chip && bif.gHaiDoc > 0 && bif.gHaiDoc < 8, JSON.stringify(bif));
+
+    // ===== T5. URL VCC kwp → targetKwp + shortfall (P3-1 của đánh giá V4) =====
+    await evalJs('location.href = location.origin + "/?from=vcc&dir=180&kwp=10&roof=nhat&w=9&l=11"');
+    await new Promise(r => setTimeout(r, 4500));
+    for (let i = 0; i < 30; i++) {
+      if (await evalJs('typeof window.__solar !== "undefined" && !!window.__solar.state') === true) break;
+      await new Promise(r => setTimeout(r, 500));
+    }
+    const vcc = await evalJson(`(function(){
+      const S = window.__solar;
+      const txt = document.getElementById('summary').textContent;
+      return JSON.stringify({ target: S.state.targetKwp, short: txt.includes('Mục tiêu 10 kWp — mới đạt'), roof: S.state.roofType });
+    })()`);
+    check('T5 URL VCC kwp=10 roof=nhat → targetKwp=10 + shortfall hiện', vcc.target === 10 && vcc.short && vcc.roof === 'nhat', JSON.stringify(vcc));
+
     console.log('=== KẾT QUẢ test-quote-v2: ' + pass + '/' + results.length + ' PASS ===');
     for (const r of results) console.log(r);
     if (pass !== results.length) failed = true;
