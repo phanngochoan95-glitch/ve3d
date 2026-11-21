@@ -160,12 +160,15 @@ server.listen(8133, '127.0.0.1', async () => {
     // ===== 6c. Camera preset bay mượt: có chuyển động giữa chừng + đến đúng đích =====
     const poseTop = await evalJson('(function(){ const p = window.__solar.cameraPoseFor("top"); return JSON.stringify({ y: +p.pos.y.toFixed(2), z: +p.pos.z.toFixed(2) }); })()');
     await evalJs('window.__solar.setCameraView("top")');
-    await new Promise(r => setTimeout(r, 150));
-    const midFly = await evalJson('(function(){ const c = window.__solar.camera.position; return JSON.stringify({ y: +c.y.toFixed(2) }); })()');
+    let midFly = null;
+    for (let k = 0; k < 3 && (midFly === null || Math.abs(midFly.y - poseTop.y) <= 3); k++) {
+      await new Promise(r => setTimeout(r, 120));
+      midFly = await evalJson('(function(){ const c = window.__solar.camera.position; return JSON.stringify({ y: +c.y.toFixed(2) }); })()');
+    }
     await new Promise(r => setTimeout(r, 1400));
     const finFly = await evalJson('(function(){ const c = window.__solar.camera.position; return JSON.stringify({ y: +c.y.toFixed(2), z: +c.z.toFixed(2) }); })()');
     check('camera bay tới đúng đích preset top', Math.abs(finFly.y - poseTop.y) < 0.6 && Math.abs(finFly.z - poseTop.z) < 0.6, 'fin=' + finFly.y + '/' + finFly.z + ' dich=' + poseTop.y + '/' + poseTop.z);
-    check('camera bay có chuyển động giữa chừng (không nhảy tức thời)', Math.abs(midFly.y - finFly.y) > 0.8, 'mid y=' + midFly.y + ' fin y=' + finFly.y);
+    check('camera bay có chuyển động giữa chừng (không nhảy tức thời)', Math.abs(midFly.y - finFly.y) > 3, 'mid y=' + midFly.y + ' fin y=' + finFly.y);
 
     // ===== 6d. User chạm canvas → huỷ tween giữa chừng (không giành camera) =====
     await evalJs('window.__solar.setCameraView("iso")');

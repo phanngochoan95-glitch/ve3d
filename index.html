@@ -793,6 +793,7 @@ const DEFAULTS = {
   panelVoc: 52.66,      // Voc tấm (V) — datasheet LONGi LR7-72HGD 620M (2023-09 V05)
   panelVmp: 44.33,      // Vmp tấm (V) — datasheet LONGi LR7-72HGD 620M
   roofPoly: null,       // K6-P2: vùng mái ĐA GIÁC vẽ tay [{x,z},…] (m, toạ độ nhà) — vùng mái THẬT dùng đặt pin; null = dùng nguyên mái W×L
+  targetKwp: null,      // kWp mục tiêu khách yêu cầu (nhập từ ô "Công suất (kWp)") — null = không đặt mục tiêu; nhỏ hơn mức xếp được sẽ cảnh báo shortfall
 };
 const state = {
   ...DEFAULTS,
@@ -1856,8 +1857,8 @@ function polySlotOK(slope, cx, cy, lay, rot = 0) {
 // Diện tích CHIẾU BẰNG của vùng đặt pin: có đa giác vẽ tay thì đúng vùng đó, không thì là
 // toàn bộ mặt mái chiếu xuống đất (KẾ CẢ PHẦN ĐỖ RA ngoài bìa tường — trước đây payload gửi
 // W×L bìa nhà nên lệch ~23% so với mái thật, fix P2). Mái thu hẹp (Nhật) lấy bề rộng trung bình hình thang.
-function roofPlanAreaM2() {
-  if (Array.isArray(state.roofPoly) && state.roofPoly.length >= 3) return polyAreaM2(state.roofPoly);
+function roofPlanAreaM2(ignorePoly = false) {
+  if (!ignorePoly && Array.isArray(state.roofPoly) && state.roofPoly.length >= 3) return polyAreaM2(state.roofPoly);
   let a = 0;
   for (const sl of slopes) {
     const tapered = 2 * sl.uHalfAt(sl.vLen / 2) < sl.uLen - 0.01;
@@ -3097,6 +3098,27 @@ function renderSummary() {
     const used = roofUsed(activeSlope);
     html += `<br>${activeSlope.label} (${adir === "ngang" ? "ngang" : "dọc"}): <b>${used}/${cap}</b> tấm · còn <b>${Math.max(0, cap - used)}</b> chỗ`;
   }
+  // Mục tiêu kWp (khách chốt ở ô "Công suất (kWp)") — đạt/thiếu hiển thị ngay để không hụt công suất khi báo giá
+  const tgt = (Number.isFinite(+state.targetKwp) && +state.targetKwp > 0) ? +state.targetKwp : null;
+  if (tgt) {
+    const needPanels = Math.ceil(tgt * 1000 / PANEL_WATT);
+    if (nPanels === 0) {
+      html += `<br>🎯 Mục tiêu <b>${fmtKw(tgt)} kWp</b> (~${needPanels} tấm) — bấm <b>⚡ Xếp tự động</b> hoặc Thêm chuỗi`;
+    } else if (totalKw + 0.04 < tgt) {
+      const capTotal = slopes.reduce((a, sl) => a + Math.max(roofCapacity(sl, "doc"), roofCapacity(sl, "ngang")), 0);
+      const capKw = kwOf(capTotal);
+      const g = [];
+      if (capTotal < needPanels) {
+        if (state.showTumThang) g.push("bỏ/dời tum thang");
+        if (state.showBonNuoc) g.push("dời bồn nước sang mép khác");
+        if (state.edgeMargin > 0.12) g.push(`giảm mép mái (hiện ${state.edgeMargin.toFixed(2)} m)`);
+        g.push("xem loại mái / nhà to hơn");
+      }
+      html += `<div style="margin-top:6px;padding:6px 8px;background:#fff7e6;border-radius:6px;border:1px solid #ffd591;color:#ad6800;font-size:11.5px">🎯 <b>Mục tiêu ${fmtKw(tgt)} kWp — mới đạt ${fmtKw(totalKw)} kWp</b> (thiếu ≈ <b>${needPanels - nPanels}</b> tấm). Toàn mái tối đa <b>${capTotal} tấm (≈ ${fmtKw(capKw)} kWp)</b>.${g.length ? " Gợi ý: " + g.join(" · ") + "." : ""} <a href="#" onclick="clearTargetKwp();return false" style="color:#0d5bbd;font-weight:600;text-decoration:underline">Bỏ mục tiêu</a></div>`;
+    } else {
+      html += ` · <span style="font-size:11px;font-weight:700;color:#065f46;background:#ecfdf5;padding:1px 6px;border-radius:6px;border:1px solid #a7f3d0">🎯 Đạt mục tiêu ${fmtKw(tgt)} kWp ✓</span>`;
+    }
+  }
   for (const s of state.strings) {
     const slope = slopeByKey(s.slopeKey);
     if (!slope) continue;
@@ -3170,6 +3192,7 @@ function collectState() {
     mpptMin: state.mpptMin ?? 150, mpptMax: state.mpptMax ?? 850,
     roofPoly: Array.isArray(state.roofPoly) && state.roofPoly.length >= 3
       ? state.roofPoly.map(p => ({ x: +p.x.toFixed(2), z: +p.z.toFixed(2) })) : null,
+    targetKwp: (Number.isFinite(+state.targetKwp) && +state.targetKwp > 0) ? +state.targetKwp : null,
     newCount: state.newCount, dirChoice: state.dirChoice, slopeKey: state.slopeKey,
     strings: state.strings.map(s => ({
       slopeKey: s.slopeKey, count: s.count, dir: s.dir, rot: s.rot,
@@ -3216,6 +3239,8 @@ function applyState(d) {
   state.roofPoly = (Array.isArray(d.roofPoly) && d.roofPoly.length >= 3
     && d.roofPoly.every(p => p && Number.isFinite(+p.x) && Number.isFinite(+p.z) && Math.abs(+p.x) <= 30 && Math.abs(+p.z) <= 30))
     ? d.roofPoly.map(p => ({ x: +p.x, z: +p.z })) : null;
+  state.targetKwp = (d.targetKwp != null && Number.isFinite(Number(d.targetKwp)) && Number(d.targetKwp) > 0 && Number(d.targetKwp) <= 100)
+    ? Number(d.targetKwp) : null;
   state.newCount = Math.round(clampNum(d.newCount, 1, 60, 9));
   state.dirChoice = d.dirChoice === "ngang" ? "ngang" : "doc";
   state.slopeKey = validKeys.has(d.slopeKey) ? d.slopeKey : null;
@@ -3442,7 +3467,7 @@ function exportCSV() {
   const monthlyKwh = Math.round(kwOf(total) * YIELD_KWH_PER_KWP_DAY * sf * 30);
   push(["Sản lượng dự kiến", `${monthlyKwh} kWh/tháng (Đón quang năng ${(sf * 100).toFixed(0)}%)`]);
   const shadePct = calcShadingLossPct();
-  push(["Suy hao che bóng", shadePct > 0 ? `~${shadePct}% (9h-15h ngày đông chí)` : "Không có vật cản"]);
+  push(["Suy hao che bóng", shadePct > 0 ? `~${shadePct}% (quét quỹ đạo 6-18h ngày đông chí, trọng số năng lượng)` : "Không có vật cản"]);
   const elec = stringElectricalCheck();
   push(["Kiểm tra điện chuỗi", total > 0
     ? (elec.overV.length
@@ -3840,11 +3865,20 @@ $("countInput").addEventListener("change", () => {
 if ($("targetKwpInput")) {
   $("targetKwpInput").addEventListener("change", () => {
     const kwp = Math.max(0.6, parseFloat($("targetKwpInput").value) || 5.0);
+    state.targetKwp = kwp; // mỗi lần chốt số kWp ở ô này = khách tuyên bố mục tiêu — thiếu chỗ sẽ cảnh báo shortfall
     state.newCount = THREE.MathUtils.clamp(Math.round(kwp * 1000 / PANEL_WATT), 1, 60);
     $("countInput").value = state.newCount;
     syncTargetKwpFromCount();
+    renderSummary();
   });
 }
+// gỡ mục tiêu kWp (link "Bỏ mục tiêu" trong khối cảnh báo shortfall) — global để onclick inline gọi được
+window.clearTargetKwp = function () {
+  state.targetKwp = null;
+  renderSummary();
+  scheduleHistory();
+  scheduleAutoSave();
+};
 const LS_ONBOARD = "solar3d.onboard_dismissed";
 if (localStorage.getItem(LS_ONBOARD) === "1") {
   if ($("onboardingGuide")) $("onboardingGuide").style.display = "none";
@@ -3977,8 +4011,9 @@ function sunDirAt(hour, winterSolstice) {
   return new THREE.Vector3(Math.cos(az) * Math.cos(alt), Math.sin(alt), Math.sin(az) * Math.cos(alt));
 }
 // K2-mini: % suy hao bóng đổ RAYCAST THẬT (thay heuristic +2.5%/+1.5%) — bắn tia từ mẫu điểm
-// trên từng chuỗi pin về mặt trời lúc 9h/12h/15h NGÀY ĐÔNG CHÍ (xấu nhất), đếm tỉ lệ bị
-// tum thang / bồn nước / tường bao che khuất. Chỉ chạy on-demand (payload/PDF/summary) + cache.
+// trên từng chuỗi pin về mặt trời QUÉT QUỸ ĐẠO 6→18h NGÀY ĐÔNG CHÍ (xấu nhất), đếm tỉ lệ bị
+// tum thang / bồn nước / tường bao che khuất, CÓ TRỌNG SỐ NĂNG LƯỢNG sin(độ cao) — bóng sáng
+// sớm/chiều (mặt trời thấp, ít điện) ít bị phạt hơn bóng trưa. Chạy on-demand + cache signature.
 let _shadeCache = { sig: "", val: 0 };
 function shadingSignature() {
   const s = state.strings.map(st => `${st.slopeKey}:${st.cx.toFixed(2)},${st.cy.toFixed(2)},${st.rot},${placedPanels(st)}`).join("|");
@@ -3998,8 +4033,10 @@ function calcShadingLossPct() {
     const UP = new THREE.Vector3(0, 1, 0);
     const angleRad = THREE.MathUtils.degToRad(state.houseAngle);
     const lift = (state.mount === "khungsat") ? 0.25 : 0.06; // cao độ mặt tấm trên mặt mái
-    let blocked = 0, total = 0;
+    let blockedW = 0, totalW = 0;
     houseGroup.updateMatrixWorld(true);
+    const HOURS = [];
+    for (let h = 6; h <= 18; h += 1) HOURS.push(h); // quét quỹ đạo 6→18h (khớp cung nắng vẽ trên trời)
     for (const s of state.strings) {
       const slope = slopeByKey(s.slopeKey);
       if (!slope) continue;
@@ -4007,20 +4044,21 @@ function calcShadingLossPct() {
       if (!lay.slots.length) continue;
       const slots = lay.slots, n = slots.length;
       const idxs = n <= 5 ? slots.map((_, i) => i) : [0, Math.floor(n * 0.25), Math.floor(n * 0.5), Math.floor(n * 0.75), n - 1];
-      for (const h of [9, 12, 15]) {
+      for (const h of HOURS) {
         const dW = sunDirAt(h, true); // hướng thế giới (houseGroup quay, mặt trời không quay)
+        const w = Math.max(0.05, dW.y); // trọng số năng lượng ~ sin(độ cao); kẹp floor để giờ mé không triệt tiêu hẳn
         for (const i of idxs) {
           const slot = slots[i];
           const p = stringOrigin(slope, s.cx + slot.x, s.cy + slot.y); // toạ độ LOCAL houseGroup
           p.addScaledVector(slope.n, lift - 0.02);
           houseGroup.localToWorld(p); // chuyển sang THẾ GIỚI để raycast khớp hướng mặt trời
           ray.set(p, dW);
-          total++;
-          if (ray.intersectObjects(obstacles, true).length) blocked++;
+          totalW += w;
+          if (ray.intersectObjects(obstacles, true).length) blockedW += w;
         }
       }
     }
-    if (total) val = Math.min(60, Math.round((blocked / total) * 1000) / 10);
+    if (totalW > 0) val = Math.min(60, Math.round((blockedW / totalW) * 1000) / 10);
   }
   _shadeCache = { sig, val };
   return val;
@@ -4651,8 +4689,10 @@ function polyDraw() {
   const nPts = closedDraft ? polyDraft.length - 1 : polyDraft.length; // không đếm điểm khép vòng trùng điểm đầu
   const area = polyAreaM2(polyDraft);
   const est = area > 0 ? Math.floor(area / (panelDims().pL * panelDims().pW) * 0.8) : 0;
+  const fullArea = roofPlanAreaM2(true); // BỎ qua poly đã lưu — tính nguyên mái thật (kể cả phần đỗ ra)
+  const estFull = fullArea > 0 ? Math.floor(fullArea / (panelDims().pL * panelDims().pW) * 0.8) : 0;
   polyInfo.innerHTML = polyFullDraft
-    ? "▭ Nguyên mái — toàn bộ mặt mái (kể cả phần đỗ ra khỏi bìa tường) dùng được. Bấm <b>✓ Lưu &amp; áp dụng</b> để bỏ giới hạn vùng."
+    ? `▭ Nguyên mái — <b>${fullArea.toFixed(1)} m²</b> (kể cả phần đỗ ra khỏi bìa tường) · sức chứa ước tính <b>${estFull} tấm (≈ ${fmtKw(kwOf(estFull))} kWp)</b> với hệ số lấp 80%. Bấm <b>✓ Lưu &amp; áp dụng</b> để bỏ giới hạn vùng.`
     : closedDraft
     ? `✓ Đã khép vùng: <b>${nPts} điểm</b> · <b>${area.toFixed(1)} m²</b> · sức chứa ước tính <b>${est} tấm (≈ ${fmtKw(kwOf(est))} kWp)</b> — bấm <b>✓ Lưu &amp; áp dụng</b> (↩ Hoàn tác điểm nếu muốn vẽ lại)`
     : polyDraft.length < 3
