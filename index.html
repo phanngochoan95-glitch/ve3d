@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="description" content="Mô phỏng 3D hệ điện mặt trời: xếp chuỗi pin LONGi 620W trên mọi loại mái, bóc tách khối lượng khung sắt, kiểm tra Voc/MPPT, xuất ảnh, bản vẽ mặt bằng và PDF báo giá sơ bộ." />
+<meta name="theme-color" content="#1473e6" />
+<meta property="og:title" content="Mô phỏng 3D hệ điện mặt trời" />
+<meta property="og:description" content="Đặt chuỗi pin 3D trên mọi loại mái — sức chứa, khối lượng sắt thép, kiểm tra Voc/MPPT và báo giá sơ bộ trong một trang." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%E2%98%80%EF%B8%8F%3C/text%3E%3C/svg%3E" />
 <title>Mô phỏng 3D hệ điện mặt trời</title>
 <style>
   :root {
@@ -195,6 +200,52 @@
   .exp-row:last-child { border-bottom: none; }
   .exp-row input[type="checkbox"] { width: 17px; height: 17px; cursor: pointer; accent-color: var(--accent); border-radius: 4px; }
 
+  /* ===== Taste Phase 2: focus ring a11y · reduced motion · entrance · polish (taste-phase-2) ===== */
+  /* Focus ring: mọi control lộ rõ khi Tab qua bàn phím */
+  :where(a, button, .opt, .string-item, .frame-action, .save-btn, .reset-btn, .dir-btn, .cam-btn, .overlay-toggle-btn, .tum-pos-btn, .bon-type-btn, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  input[type="text"]:focus-visible, input[type="number"]:focus-visible, select:focus-visible, input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  input[type="range"]:focus-visible { outline: none; }
+  input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 6px rgba(20, 115, 230, 0.28), 0 2px 8px rgba(15, 23, 42, 0.25); }
+  input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 6px rgba(20, 115, 230, 0.28), 0 2px 8px rgba(15, 23, 42, 0.25); }
+
+  /* Select: mũi tên tự vẽ đồng bộ mọi nền tảng + hover/focus */
+  .io-select { -webkit-appearance: none; appearance: none; padding-right: 30px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2364748b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
+  .io-select:hover { border-color: var(--border-hover); }
+  .io-select:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(20, 115, 230, 0.15); }
+  .io-name input:hover { border-color: var(--border-hover); }
+
+  /* Nút inline-styled còn sót: hover nâng nhẹ, active lún xúc giác */
+  .tum-pos-btn, .bon-type-btn, #optTiltBtn { transition: transform 0.12s var(--ease-out), box-shadow 0.15s ease, filter 0.15s ease; }
+  .tum-pos-btn:hover, .bon-type-btn:hover, #optTiltBtn:hover { transform: translateY(-1px); filter: brightness(0.96); box-shadow: var(--shadow-sm); }
+  .tum-pos-btn:active, .bon-type-btn:active, #optTiltBtn:active { transform: translateY(1px) scale(0.97); }
+
+  /* Checkbox hover phản hồi nhẹ */
+  .exp-row input[type="checkbox"] { transition: transform 0.15s var(--ease-out); }
+  .exp-row input[type="checkbox"]:hover { transform: scale(1.12); }
+  .exp-row input[type="checkbox"]:active { transform: scale(0.94); }
+
+  /* ẩn spinner number mặc định ở ô có stepper riêng (đồng bộ +/−) */
+  .dimension-field input::-webkit-outer-spin-button, .dimension-field input::-webkit-inner-spin-button,
+  .stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .dimension-field input, .stepper input { appearance: textfield; -moz-appearance: textfield; }
+
+  /* Entrance 1 lần khi tải trang (desktop) + notice/modal hiện lên mượt */
+  @keyframes taste-panel-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes taste-fade-down { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes taste-pop { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+  @media (min-width: 761px) {
+    .panel { animation: taste-panel-in 0.45s var(--ease-out) backwards; }
+    .house-dir-overlay { animation: taste-fade-down 0.5s var(--ease-out) 0.12s backwards; }
+  }
+  .notice { animation: taste-pop 0.22s var(--ease-out); }
+  #polyModal > div { animation: taste-pop 0.22s var(--ease-out); }
+
+  /* Tôn trọng người dùng tắt chuyển động */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; transition-delay: 0s !important; }
+    .panel { transition: none !important; }
+  }
+
   @media screen {
     #printReport { display: none !important; }
   }
@@ -275,7 +326,7 @@
       <div class="onboarding-guide" id="onboardingGuide" style="margin:10px 0 14px;padding:10px 12px;background:#eef5ff;border:1.5px solid #b8d7ff;border-radius:8px;font-size:12px;color:#1b4f8a;line-height:1.5">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
           <strong style="color:#0d5bbd;font-size:12.5px">💡 Hướng dẫn nhanh 3 bước cho người mới:</strong>
-          <button type="button" id="closeOnboardingBtn" style="border:none;background:transparent;cursor:pointer;font-size:13px;color:#7a8a99;padding:0 4px" title="Đã hiểu, đóng hướng dẫn">✕</button>
+          <button type="button" id="closeOnboardingBtn" style="border:none;background:transparent;cursor:pointer;font-size:13px;color:#64748b;padding:0 4px" title="Đã hiểu, đóng hướng dẫn">✕</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:3px">
           <span><b>①</b> Chọn <b>loại mái</b> nhà bạn (Tôn, Ngói, Mái bằng...).</span>
@@ -330,8 +381,8 @@
       <div class="field">
         <label>Cách lắp</label>
         <div class="options" id="mountOptions">
-          <div class="opt active" data-v="apmai">Áp mái</div>
-          <div class="opt" data-v="khungsat">Có khung sắt</div>
+          <div class="opt active" data-v="apmai" tabindex="0" role="button">Áp mái</div>
+          <div class="opt" data-v="khungsat" tabindex="0" role="button">Có khung sắt</div>
         </div>
         <div id="rackControls" style="display:none;margin-top:10px;padding:12px;background:#f5f8fb;border-radius:8px;border:1.5px solid #d6dbe0">
           <div id="rackHField">
@@ -412,11 +463,11 @@
       <div class="field">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
           <label style="margin:0">Số tấm pin trong chuỗi mới</label>
-          <span style="font-size:11.5px;color:#6b7c8c">hoặc nhập <b style="color:#1473e6">kWp</b></span>
+          <span style="font-size:11.5px;color:#64748b">hoặc nhập <b style="color:#1473e6">kWp</b></span>
         </div>
         <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:8px;margin-bottom:8px">
           <div>
-            <div style="font-size:11px;color:#6b7c8c;margin-bottom:3px">Số tấm:</div>
+            <div style="font-size:11px;color:#64748b;margin-bottom:3px">Số tấm:</div>
             <div class="stepper">
               <button id="countMinus" type="button" aria-label="Giảm">−</button>
               <input type="number" id="countInput" min="1" max="60" value="9" />
@@ -424,10 +475,10 @@
             </div>
           </div>
           <div>
-            <div style="font-size:11px;color:#6b7c8c;margin-bottom:3px">Công suất (kWp):</div>
+            <div style="font-size:11px;color:#64748b;margin-bottom:3px">Công suất (kWp):</div>
             <div class="stepper" style="position:relative">
               <input type="number" id="targetKwpInput" min="0.6" max="60" step="0.5" value="5.58" style="padding:0 34px 0 8px;font-weight:700;color:#1473e6;text-align:center" />
-              <span style="position:absolute;right:8px;font-size:11px;color:#8c9ba5;pointer-events:none">kWp</span>
+              <span style="position:absolute;right:8px;font-size:11px;color:#64748b;pointer-events:none">kWp</span>
             </div>
           </div>
         </div>
@@ -467,8 +518,8 @@
       <div class="field" id="selField" style="display:none">
         <label>Hướng tấm pin (chuỗi đang chọn)</label>
         <div class="options" id="dirOptions">
-          <div class="opt active" data-v="doc">↕ Dọc</div>
-          <div class="opt" data-v="ngang">↔ Ngang</div>
+          <div class="opt active" data-v="doc" tabindex="0" role="button">↕ Dọc</div>
+          <div class="opt" data-v="ngang" tabindex="0" role="button">↔ Ngang</div>
         </div>
         <label style="margin-top:14px">Xoay chuỗi: <b id="rotLabel" style="color:#1473e6">0°</b></label>
         <input type="range" id="rotRange" min="0" max="350" step="10" value="0" />
@@ -488,7 +539,7 @@
 
       <details class="field exp-details" id="testExpField" style="margin-top:14px;background:#fbfcfe;border:1px dashed #c0d1e5;border-radius:8px;padding:10px 12px">
         <summary>🧪 Tính năng thử nghiệm (xem thử)</summary>
-        <p style="font-size:11px;color:#6b7785;margin:4px 0 8px;line-height:1.4">Các tùy chọn phụ trợ kiến trúc để xem thử tính phù hợp trên mô hình 3D.</p>
+        <p style="font-size:11px;color:#64748b;margin:4px 0 8px;line-height:1.4">Các tùy chọn phụ trợ kiến trúc để xem thử tính phù hợp trên mô hình 3D.</p>
         <div class="exp-row" id="tumThangField">
           <span style="font-weight:600;color:#2c3e50">Tum thang sân thượng</span>
           <input type="checkbox" id="tumThangCheck" aria-label="Bật tum thang" />
@@ -519,11 +570,11 @@
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
             <div>
-              <label style="display:block;font-size:10px;color:#718096;margin-bottom:1px">Dịch X (trái-phải):</label>
+              <label style="display:block;font-size:10px;color:#64748b;margin-bottom:1px">Dịch X (trái-phải):</label>
               <input type="range" id="tumXRange" min="-10" max="10" step="0.1" value="0" aria-label="Vị trí X tum thang" />
             </div>
             <div>
-              <label style="display:block;font-size:10px;color:#718096;margin-bottom:1px">Dịch Z (sau-trước):</label>
+              <label style="display:block;font-size:10px;color:#64748b;margin-bottom:1px">Dịch Z (sau-trước):</label>
               <input type="range" id="tumZRange" min="-10" max="10" step="0.1" value="0" aria-label="Vị trí Z tum thang" />
             </div>
           </div>
@@ -544,11 +595,11 @@
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div>
-              <label style="display:block;font-size:10px;color:#718096;margin-bottom:1px">Dịch X (trái-phải):</label>
+              <label style="display:block;font-size:10px;color:#64748b;margin-bottom:1px">Dịch X (trái-phải):</label>
               <input type="range" id="bonNuocXRange" min="-10" max="10" step="0.1" value="0" aria-label="Vị trí X bồn nước" />
             </div>
             <div>
-              <label style="display:block;font-size:10px;color:#718096;margin-bottom:1px">Dịch Z (sau-trước):</label>
+              <label style="display:block;font-size:10px;color:#64748b;margin-bottom:1px">Dịch Z (sau-trước):</label>
               <input type="range" id="bonNuocZRange" min="-10" max="10" step="0.1" value="0" aria-label="Vị trí Z bồn nước" />
             </div>
           </div>
@@ -563,12 +614,12 @@
       <details class="field" id="elecField" open>
         <summary>⚡ Kiểm tra điện chuỗi (Voc / MPPT) — tự động áp dụng</summary>
         <div style="padding:8px 2px;display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;color:#36424e">
-          <div><label style="display:block;font-size:10px;color:#718096">Voc tấm (V)</label><input type="number" id="panelVocInput" value="52.66" step="0.01" min="1" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
-          <div><label style="display:block;font-size:10px;color:#718096">Vmp tấm (V)</label><input type="number" id="panelVmpInput" value="44.33" step="0.01" min="1" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
-          <div><label style="display:block;font-size:10px;color:#718096">MPPT min (V)</label><input type="number" id="mpptMinInput" value="150" step="5" min="0" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
-          <div><label style="display:block;font-size:10px;color:#718096">MPPT max (V)</label><input type="number" id="mpptMaxInput" value="850" step="5" min="0" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
+          <div><label style="display:block;font-size:10px;color:#64748b">Voc tấm (V)</label><input type="number" id="panelVocInput" value="52.66" step="0.01" min="1" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
+          <div><label style="display:block;font-size:10px;color:#64748b">Vmp tấm (V)</label><input type="number" id="panelVmpInput" value="44.33" step="0.01" min="1" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
+          <div><label style="display:block;font-size:10px;color:#64748b">MPPT min (V)</label><input type="number" id="mpptMinInput" value="150" step="5" min="0" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
+          <div><label style="display:block;font-size:10px;color:#64748b">MPPT max (V)</label><input type="number" id="mpptMaxInput" value="850" step="5" min="0" style="width:100%;padding:4px 6px;border:1px solid #cbd5e0;border-radius:4px" /></div>
         </div>
-        <div style="font-size:10.5px;color:#718096;padding:2px 2px 0">Kiểm tra <b>TỰ ĐỘNG chạy cho mọi chuỗi</b> với dữ liệu mặc định datasheet LONGi LR7-72HGD 620M (Voc 52.66V / Vmp 44.33V, hệ số nhiệt Voc −0.30%/°C) và cửa sổ MPPT 150–850V — chỉ chỉnh lại khi dùng tấm pin / inverter khác. Công thức: Voc lạnh = n×Voc×1.05 ≤ MPPT max · Vmp nóng = n×Vmp×0.88 ≥ MPPT min.</div>
+        <div style="font-size:10.5px;color:#64748b;padding:2px 2px 0">Kiểm tra <b>TỰ ĐỘNG chạy cho mọi chuỗi</b> với dữ liệu mặc định datasheet LONGi LR7-72HGD 620M (Voc 52.66V / Vmp 44.33V, hệ số nhiệt Voc −0.30%/°C) và cửa sổ MPPT 150–850V — chỉ chỉnh lại khi dùng tấm pin / inverter khác. Công thức: Voc lạnh = n×Voc×1.05 ≤ MPPT max · Vmp nóng = n×Vmp×0.88 ≥ MPPT min.</div>
       </details>
 
       <details class="field" id="ioField" open>
@@ -2582,6 +2633,7 @@ function renderRoofOptions() {
   for (const t of ROOF_TYPES) {
     const d = document.createElement("div");
     d.className = "opt" + (state.roofType === t.v ? " active" : "");
+    d.tabIndex = 0; d.setAttribute("role", "button");
     d.textContent = t.label;
     d.onclick = () => { state.roofType = t.v; renderRoofOptions(); updateCustomFields(); buildHouse(); refreshAll(); };
     box.appendChild(d);
@@ -2596,6 +2648,7 @@ function renderSlopeOptions() {
   for (const s of slopes) {
     const d = document.createElement("div");
     d.className = "opt" + (state.slopeKey === s.key ? " active" : "");
+    d.tabIndex = 0; d.setAttribute("role", "button");
     d.textContent = s.label;
     d.onclick = () => { state.slopeKey = s.key; renderSlopeOptions(); };
     box.appendChild(d);
@@ -2611,6 +2664,7 @@ function renderStringList() {
     const slope = slopeByKey(s.slopeKey);
     const d = document.createElement("div");
     d.className = "string-item" + (s.id === state.selectedId ? " active" : "");
+    d.tabIndex = 0; d.setAttribute("role", "button");
     // hiển thị số tấm THẬT trên mái (không phải số nhập) để khỏi lệch với hình 3D
     const placed = placedPanels(s);
     const dis = Array.isArray(s.disabled) ? s.disabled.length : 0;
@@ -3332,6 +3386,15 @@ window.addEventListener("keydown", (e) => {
   const tag = (e.target?.tagName || "").toLowerCase();
   const typing = tag === "input" || tag === "textarea" || tag === "select" || e.target?.isContentEditable;
   const mod = e.ctrlKey || e.metaKey;
+  // a11y: .opt / .string-item là div role=button — Enter/Space kích hoạt như click
+  if ((e.key === "Enter" || e.key === " ") && !typing) {
+    const t = e.target;
+    if (t && t.tagName === "DIV" && (t.classList.contains("opt") || t.classList.contains("string-item"))) {
+      e.preventDefault();
+      t.click();
+      return;
+    }
+  }
   if (mod && e.key.toLowerCase() === "z") {
     if (typing) return;
     e.preventDefault();
