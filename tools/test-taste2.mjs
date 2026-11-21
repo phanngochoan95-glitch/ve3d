@@ -150,6 +150,31 @@ server.listen(8133, '127.0.0.1', async () => {
     })`);
     check('checkbox + optTiltBtn có transition', parseFloat(micro.cbTrans) > 0 && parseFloat(micro.tiltTrans) > 0);
 
+    // ===== 6b. Loading veil: CSS tồn tại + tự ẩn sau frame đầu =====
+    const veil = await evalJson(`JSON.stringify({
+      gone: !document.getElementById('loadingVeil') || document.getElementById('loadingVeil').classList.contains('done'),
+      css: [...document.styleSheets].some(ss => { try { return [...ss.cssRules].some(r => (r.selectorText || '').includes('.loading-veil')); } catch { return false; } })
+    })`);
+    check('loading veil có CSS + tự ẩn sau frame đầu', veil.css && veil.gone);
+
+    // ===== 6c. Camera preset bay mượt: có chuyển động giữa chừng + đến đúng đích =====
+    const poseTop = await evalJson('(function(){ const p = window.__solar.cameraPoseFor("top"); return JSON.stringify({ y: +p.pos.y.toFixed(2), z: +p.pos.z.toFixed(2) }); })()');
+    await evalJs('window.__solar.setCameraView("top")');
+    await new Promise(r => setTimeout(r, 150));
+    const midFly = await evalJson('(function(){ const c = window.__solar.camera.position; return JSON.stringify({ y: +c.y.toFixed(2) }); })()');
+    await new Promise(r => setTimeout(r, 1400));
+    const finFly = await evalJson('(function(){ const c = window.__solar.camera.position; return JSON.stringify({ y: +c.y.toFixed(2), z: +c.z.toFixed(2) }); })()');
+    check('camera bay tới đúng đích preset top', Math.abs(finFly.y - poseTop.y) < 0.6 && Math.abs(finFly.z - poseTop.z) < 0.6, 'fin=' + finFly.y + '/' + finFly.z + ' dich=' + poseTop.y + '/' + poseTop.z);
+    check('camera bay có chuyển động giữa chừng (không nhảy tức thời)', Math.abs(midFly.y - finFly.y) > 0.8, 'mid y=' + midFly.y + ' fin y=' + finFly.y);
+
+    // ===== 6d. User chạm canvas → huỷ tween giữa chừng (không giành camera) =====
+    await evalJs('window.__solar.setCameraView("iso")');
+    await new Promise(r => setTimeout(r, 200));
+    await evalJs(`(function(){ const el = window.__solar.renderer.domElement; const r = el.getBoundingClientRect(); const o = { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, buttons: 1 }; el.dispatchEvent(new PointerEvent('pointerdown', o)); el.dispatchEvent(new PointerEvent('pointermove', o)); el.dispatchEvent(new PointerEvent('pointerup', o)); return true; })()`);
+    await new Promise(r => setTimeout(r, 900));
+    const frozen = await evalJson('(function(){ const p = window.__solar.cameraPoseFor("iso"); const c = window.__solar.camera.position; return JSON.stringify({ dy: +(c.y - p.pos.y).toFixed(2), dz: +(c.z - p.pos.z).toFixed(2) }); })()');
+    check('user chạm canvas huỷ tween (đứng giữa chừng)', Math.abs(frozen.dy) > 0.5, 'dy=' + frozen.dy);
+
     await shot('screenshot_taste2_desktop.png');
 
     // ===== 7. Mobile 390: panel entrance KHÔNG chạy (không phá bottom-sheet) =====
