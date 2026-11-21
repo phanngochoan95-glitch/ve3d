@@ -839,15 +839,51 @@ const sunMesh = new THREE.Mesh(
 scene.add(sunMesh);
 // mặt trời theo giờ: 6h mọc Đông (+X) → 12h đỉnh về Nam (+Z) → 18h lặn Tây (-X);
 // Vietnam nhiệt độ cao nên góc cao lúc trưa lấy ~62°, sớm/chiều không thấp quá 8° cho bóng đẹp
-function updateSun() {
-  const t = (state.hour - 6) / 12;
+function sunDirAtHour(hour) {
+  const t = (hour - 6) / 12;
   const az = t * Math.PI;
   const alt = Math.max(THREE.MathUtils.degToRad(8), Math.sin(t * Math.PI) * THREE.MathUtils.degToRad(62));
-  const d = new THREE.Vector3(Math.cos(az) * Math.cos(alt), Math.sin(alt), Math.sin(az) * Math.cos(alt));
+  return new THREE.Vector3(Math.cos(az) * Math.cos(alt), Math.sin(alt), Math.sin(az) * Math.cos(alt));
+}
+function updateSun() {
+  const d = sunDirAtHour(state.hour);
   sun.position.copy(d).multiplyScalar(42);
   sunMesh.position.copy(d).multiplyScalar(85);
 }
 updateSun();
+
+// Cung đường đi nắng 6h→18h (Đông→Nam→Tây) vẽ trong trời — minh hoạ cho khách thấy
+// quỹ đạo mặt trời; toạ độ thế giới (không xoay theo nhà), bán kính bao ngoài ngôi nhà.
+let sunPathGroup = null;
+let sunPathBuiltForDim = 0;
+function buildSunPath() {
+  const maxDim = Math.max(state.houseW, state.houseL);
+  if (sunPathGroup && Math.abs(maxDim - sunPathBuiltForDim) < 0.5) return; // chỉ dựng lại khi nhà đổi kích thước
+  if (sunPathGroup) { disposeTree(sunPathGroup); scene.remove(sunPathGroup); }
+  sunPathBuiltForDim = maxDim;
+  const R = THREE.MathUtils.clamp(maxDim * 0.55 + 3.5, 11, 22); // gọn vừa để mốc 12h lọt khung view mặt trước (FOV 45°)
+  const pts = [];
+  for (let h = 6; h <= 18.001; h += 0.25) pts.push(sunDirAtHour(h).multiplyScalar(R));
+  const arc = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineDashedMaterial({ color: 0xf59e0b, dashSize: 0.7, gapSize: 0.5, transparent: true, opacity: 0.7 })
+  );
+  arc.computeLineDistances();
+  sunPathGroup = new THREE.Group();
+  sunPathGroup.add(arc);
+  for (const [hh, lbl] of [[6, "6h"], [12, "12h"], [18, "18h"]]) {
+    const p = sunDirAtHour(hh).multiplyScalar(R);
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), new THREE.MeshBasicMaterial({ color: 0xf59e0b }));
+    dot.position.copy(p);
+    sunPathGroup.add(dot);
+    const lblSprite = textSprite(lbl, "#b45309");
+    lblSprite.position.copy(p).add(new THREE.Vector3(0, 1.15, 0));
+    lblSprite.scale.multiplyScalar(1.8); // label trời cần to hơn nhãn kích thước để đọc được từ xa
+    sunPathGroup.add(lblSprite);
+  }
+  sunPathGroup.userData.isSunPath = true; // ẩn trong ảnh xuất khách (cùng nhóm nét kỹ thuật với setback)
+  scene.add(sunPathGroup);
+}
 
 // Mặt đất: nền xanh nhạt có đốm noise nhẹ (texture tạo bằng canvas)
 function groundTexture() {
@@ -1554,6 +1590,7 @@ function buildHouse() {
 
   buildDimLines();
   buildCompass();
+  buildSunPath();
   rebuildStringGroups();
   renderSlopeOptions();
 }
@@ -2442,6 +2479,7 @@ function selectString(id) {
 }
 function removeString(id) {
   const i = state.strings.findIndex(s => s.id === id);
+  if (hoverStringId === id) clearHover();
   if (i >= 0) {
     if (state.strings[i].group) { disposeTree(state.strings[i].group); houseGroup.remove(state.strings[i].group); }
     state.strings.splice(i, 1);
@@ -2464,6 +2502,48 @@ let pointerDownTime = 0;
 let pointerDownPos = { x: 0, y: 0 };
 let pointerMoved = false;
 let clickedPanelInfo = null;
+
+// hover highlight: khung amber quanh chuỗi pin dưới con trỏ — khách biết chỗ bấm/kéo được.
+// Không đụng material (chuỗi dùng material DÙNG CHUNG) — chỉ 1 khung LineSegments di chuyển theo bbox.
+let hoverStringId = null;
+const hoverBox = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+  new THREE.LineBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.9 })
+);
+hoverBox.visible = false;
+scene.add(hoverBox);
+function clearHover() {
+  hoverStringId = null;
+  hoverBox.visible = false;
+  renderer.domElement.style.cursor = "";
+}
+let lastHoverT = 0;
+renderer.domElement.addEventListener("pointermove", (e) => {
+  if (e.pointerType === "touch") return; // cảm ứng không có hover
+  const now = performance.now();
+  if (now - lastHoverT < 40) return; // throttle raycast ~25 lần/giây là đủ mượt
+  lastHoverT = now;
+  if (dragging) { clearHover(); return; }
+  setPointer(e);
+  raycaster.setFromCamera(pointer, camera);
+  const panelMeshes = state.strings.flatMap(s => s.group ? s.group.children.filter(c => c.type === "Group") : [])
+    .flatMap(t => t.children.filter(c => c.isMesh));
+  const hits = raycaster.intersectObjects(panelMeshes, false);
+  const id = hits.length ? hits[0].object.userData.stringId : null;
+  hoverStringId = id;
+  renderer.domElement.style.cursor = id != null ? "pointer" : "";
+  if (id == null) { hoverBox.visible = false; return; }
+  if (id === state.selectedId) { hoverBox.visible = false; return; } // chuỗi đang chọn đã có khung xanh riêng
+  const str = state.strings.find(s => s.id === id);
+  if (!str || !str.group) { hoverBox.visible = false; return; }
+  const b = new THREE.Box3().setFromObject(str.group);
+  const c = new THREE.Vector3(), sz = new THREE.Vector3();
+  b.getCenter(c); b.getSize(sz);
+  hoverBox.position.copy(c);
+  hoverBox.scale.set(sz.x + 0.18, sz.y + 0.18, sz.z + 0.18);
+  hoverBox.visible = true;
+});
+renderer.domElement.addEventListener("pointerleave", clearHover);
 
 renderer.domElement.addEventListener("pointerdown", (e) => {
   setPointer(e);
@@ -4161,6 +4241,9 @@ function renderSnapshotCanvas(customLabel) {
   for (const o of houseGroup.children) {
     if (o.userData && o.userData.isSetbackLine && o.visible) { o.visible = false; hidden.push(o); }
   }
+  // cung đường nắng + khung hover cũng là nét tham chiếu — không vào ảnh khách
+  if (sunPathGroup && sunPathGroup.visible) { sunPathGroup.visible = false; hidden.push(sunPathGroup); }
+  if (hoverBox.visible) { hoverBox.visible = false; hidden.push(hoverBox); }
   renderer.render(scene, camera);
   const out = document.createElement("canvas");
   out.width = renderer.domElement.width; out.height = renderer.domElement.height;
@@ -4190,6 +4273,9 @@ function captureSnapshotForView(viewType, customTitle) {
   for (const o of houseGroup.children) {
     if (o.userData && o.userData.isSetbackLine && o.visible) { o.visible = false; hidden.push(o); }
   }
+  // cung đường nắng + khung hover cũng là nét tham chiếu — không vào ảnh khách
+  if (sunPathGroup && sunPathGroup.visible) { sunPathGroup.visible = false; hidden.push(sunPathGroup); }
+  if (hoverBox.visible) { hoverBox.visible = false; hidden.push(hoverBox); }
 
   const prevPos = camera.position.clone();
   const prevTarget = controls.target.clone();
@@ -4254,6 +4340,9 @@ function renderPlanCanvas() {
   for (const o of houseGroup.children) {
     if (o.userData && (o.userData.isSetbackLine || o.userData.isDimLine || o.userData.isPolyOutline) && o.visible) { o.visible = false; hidden.push(o); }
   }
+  // cung đường nắng + khung hover cũng là nét tham chiếu — không vào ảnh khách
+  if (sunPathGroup && sunPathGroup.visible) { sunPathGroup.visible = false; hidden.push(sunPathGroup); }
+  if (hoverBox.visible) { hoverBox.visible = false; hidden.push(hoverBox); }
 
   // khung nhìn: bounding box cảnh quy về hệ trục NHÀ (xoay ngược houseAngle)
   const bbox = new THREE.Box3().setFromObject(houseGroup);
@@ -4966,7 +5055,7 @@ window.__solar = {
   layoutSlots, placedPanels, roofCapacity, roofUsed, planPlacement, repackSlope, addString, notify,
   collectState, applyState, undo, redo, exportCSV, exportPDF, setCameraView, cameraPoseFor, shareURL, getBaoGiaUrl,
   refreshAll, buildHouse, calcSolarFactor, checkSetbackViolations, stringElectricalCheck, calcShadingLossPct, sunDirAt, getBonNuocPos, getTumPos, flatRoofY, renderPlanCanvas, captureStandardSnapshots,
-  polyAreaM2, pointInPoly, polySlotOK, applyRoofPoly, rebuildPolyOutline, roofPlanAreaM2,
+  polyAreaM2, pointInPoly, polySlotOK, applyRoofPoly, rebuildPolyOutline, roofPlanAreaM2, getHoverStringId: () => hoverStringId, hoverBoxVisible: () => hoverBox.visible, sunPathGroup: () => sunPathGroup,
   getHistory: () => ({ hist, histIdx }),
   textures: () => renderer.info.memory,
 };

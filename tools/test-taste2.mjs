@@ -175,7 +175,56 @@ server.listen(8133, '127.0.0.1', async () => {
     const frozen = await evalJson('(function(){ const p = window.__solar.cameraPoseFor("iso"); const c = window.__solar.camera.position; return JSON.stringify({ dy: +(c.y - p.pos.y).toFixed(2), dz: +(c.z - p.pos.z).toFixed(2) }); })()');
     check('user chạm canvas huỷ tween (đứng giữa chừng)', Math.abs(frozen.dy) > 0.5, 'dy=' + frozen.dy);
 
+    // ===== 6e. Hover highlight chuỗi pin =====
+    await evalJs('window.__solar.setCameraView("front")');
+    await new Promise(r => setTimeout(r, 1300));
+    await evalJs('window.__solar.addString()');
+    await evalJs('window.__solar.addString()'); // chuỗi 2 được auto-chọn → hover chuỗi 1 để thấy khung amber
+    const stInfo = await evalJson(`(function(){
+      const S = window.__solar; const st = S.state.strings[0];
+      if (!st || !st.group) return JSON.stringify({ err: 'no-string' });
+      let mesh = null;
+      st.group.traverse(o => { if (!mesh && o.isMesh && o.userData.stringId === st.id) mesh = o; });
+      if (!mesh) return JSON.stringify({ err: 'no-mesh' });
+      const c = new S.THREE.Box3().setFromObject(mesh).getCenter(new S.THREE.Vector3());
+      const v = c.project(S.camera);
+      const r = S.renderer.domElement.getBoundingClientRect();
+      return JSON.stringify({ id: st.id, n: S.state.strings.length, x: Math.round(r.left + (v.x + 1) / 2 * r.width), y: Math.round(r.top + (1 - v.y) / 2 * r.height), z: +v.z.toFixed(2) });
+    })()`);
+    check('addString đặt 2 chuỗi cho test hover', !stInfo.err && stInfo.n >= 2 && stInfo.z < 1, JSON.stringify(stInfo).slice(0, 80));
+    await evalJs(`(function(){ const el = window.__solar.renderer.domElement; el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', isPrimary: true, clientX: ${stInfo.x}, clientY: ${stInfo.y}, button: 0, buttons: 0 })); return true; })()`);
+    await new Promise(r => setTimeout(r, 160));
+    const hov = await evalJson(`JSON.stringify({ id: window.__solar.getHoverStringId(), cursor: window.__solar.renderer.domElement.style.cursor, box: window.__solar.hoverBoxVisible() })`);
+    check('hover chuỗi → khung amber + cursor pointer', hov.id === stInfo.id && hov.cursor === 'pointer' && hov.box === true, 'id=' + hov.id + ' cursor=' + hov.cursor + ' box=' + hov.box);
     await shot('screenshot_taste2_desktop.png');
+    await evalJs(`(function(){ const el = window.__solar.renderer.domElement; const r = el.getBoundingClientRect(); el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', isPrimary: true, clientX: r.left + 2, clientY: r.top + 2, button: 0, buttons: 0 })); return true; })()`);
+    await new Promise(r => setTimeout(r, 160));
+    const hovOff = await evalJson('JSON.stringify({ id: window.__solar.getHoverStringId() })');
+    check('rời chuỗi → hết highlight', hovOff.id === null);
+
+    // ===== 6f. Cung đường mặt trời 6h→18h =====
+    const sp = await evalJson(`(function(){
+      const g = window.__solar.sunPathGroup();
+      if (!g) return JSON.stringify({ err: 'none' });
+      const arcs = g.children.filter(c => c.isLine);
+      const sprites = g.children.filter(c => c.isSprite);
+      const dots = g.children.filter(c => c.isMesh && c.geometry.type === 'SphereGeometry');
+      return JSON.stringify({ visible: g.visible, lines: arcs.length, pts: arcs[0] ? arcs[0].geometry.attributes.position.count : 0, sprites: sprites.length, dots: dots.length, flag: !!g.userData.isSunPath });
+    })()`);
+    check('cung nắng: 1 line ≥48 điểm + 3 nhãn + 3 mốc + flag ẩn xuất', sp.lines === 1 && sp.pts >= 48 && sp.sprites === 3 && sp.dots === 3 && sp.flag && sp.visible, JSON.stringify(sp));
+    const sunAlign = await evalJson(`(function(){
+      const S = window.__solar;
+      const sun = S.scene.children.find(o => o.isMesh && o.geometry.type === 'SphereGeometry' && o.material.color && o.material.color.getHex() === 0xffd54a);
+      if (!sun) return JSON.stringify({ err: 'no-sun' });
+      const dots = S.sunPathGroup().children.filter(c => c.isMesh && c.geometry.type === 'SphereGeometry');
+      const a = sun.position.clone().normalize();
+      let best = 0;
+      for (const d of dots) best = Math.max(best, a.dot(d.position.clone().normalize()));
+      return JSON.stringify({ best: +best.toFixed(4) });
+    })()`);
+    check('mốc giờ trên cung trùng hướng mặt trời (dot ≥ 0.999)', sunAlign.best >= 0.999, JSON.stringify(sunAlign));
+
+    await shot('screenshot_taste2_hover.png');
 
     // ===== 7. Mobile 390: panel entrance KHÔNG chạy (không phá bottom-sheet) =====
     await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
