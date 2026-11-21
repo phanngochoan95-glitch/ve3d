@@ -66,7 +66,6 @@ server.listen(8134, '127.0.0.1', async () => {
 
     let pass = 0; const results = [];
     const check = (name, ok, detail = '') => { results.push((ok ? 'PASS' : 'FAIL') + ' ' + name + (detail ? ' — ' + detail : '')); if (ok) pass++; };
-    const summaryText = () => evalJs('document.getElementById("summary").textContent');
 
     // ===== (3) Shortfall kWp mục tiêu =====
     // T1a: Nhật 9×11 + mục tiêu 10 kWp → chỉ 14 tấm ≈ 8.68 kWp → cảnh báo thiếu + gợi ý + link Bỏ mục tiêu
@@ -80,9 +79,7 @@ server.listen(8134, '127.0.0.1', async () => {
       return JSON.stringify({ panels, hasShort: txt.includes('Mục tiêu 10 kWp — mới đạt'), hasGap: txt.includes('thiếu'), hasHint: txt.includes('giảm mép mái'), hasLink: txt.includes('Bỏ mục tiêu'), hasCap: txt.includes('Toàn mái tối đa') });
     })()`);
     check('T1a shortfall: Nhật 14 tấm < 17 tấm mục tiêu 10 kWp → cảnh báo đủ 4 phần', t1a.panels === 14 && t1a.hasShort && t1a.hasGap && t1a.hasHint && t1a.hasLink && t1a.hasCap, JSON.stringify(t1a));
-    // T1b: Bỏ mục tiêu → hết cảnh báo (từng bước để chẩn đoán nếu lỗi)
-    const fnSrc = await evalJs('String(window.clearTargetKwp).slice(0, 60)');
-    console.log('   [probe] clearTargetKwp =', fnSrc);
+    // T1b: Bỏ mục tiêu → hết cảnh báo
     await evalJs('window.clearTargetKwp()');
     const txt1b = await evalJs('document.getElementById("summary").textContent');
     const stateNull = await evalJs('window.__solar.state.targetKwp === null');
