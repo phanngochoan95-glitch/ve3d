@@ -263,6 +263,7 @@
   }
   @media print {
     @page { size: A4 portrait; margin: 10mm 12mm; }
+    #printReport, #printReport * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body { background: #fff !important; margin: 0 !important; }
     body * { visibility: hidden !important; }
     #printReport, #printReport * { visibility: visible !important; }
@@ -494,7 +495,7 @@
             </div>
           </div>
           <div>
-            <div style="font-size:11px;color:#64748b;margin-bottom:3px">Công suất (kWp):</div>
+            <div style="font-size:11px;color:#64748b;margin-bottom:3px" id="kwpInputLabel">Công suất (kWp):</div>
             <div class="stepper" style="position:relative">
               <input type="number" id="targetKwpInput" min="0.6" max="60" step="0.5" value="5.58" style="padding:0 34px 0 8px;font-weight:700;color:#1473e6;text-align:center" />
               <span style="position:absolute;right:8px;font-size:11px;color:#64748b;pointer-events:none">kWp</span>
@@ -670,25 +671,27 @@
 </div>
 
 <div id="printReport">
-  <div style="border-bottom: 2px solid #1473e6; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-end;">
+  <div style="background: #1473e6; color: #fff; padding: 14px 18px; margin: -2mm -2mm 14px; display: flex; justify-content: space-between; align-items: center; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
     <div>
-      <h1 style="font-size: 22px; font-weight: 700; color: #0d47a1; margin: 0 0 4px;">BÁO CÁO THIẾT KẾ & BÁO GIÁ SƠ BỘ</h1>
-      <div style="font-size: 13px; color: #555;">HỆ THỐNG ĐIỆN MẶT TRỜI MÁI NHÀ · SOLAR 3D SIMULATOR</div>
+      <h1 style="font-size: 21px; font-weight: 700; color: #fff; margin: 0 0 3px;">BÁO CÁO THIẾT KẾ & BÁO GIÁ SƠ BỘ</h1>
+      <div style="font-size: 12px; color: #cfe3ff;">HỆ THỐNG ĐIỆN MẶT TRỜI MÁI NHÀ · SOLAR 3D SIMULATOR</div>
     </div>
-    <div style="text-align: right; font-size: 12px; color: #666;">
-      <div>Ngày lập: <b id="printDate"></b></div>
+    <div style="text-align: right; font-size: 12px; color: #cfe3ff;">
+      <div>Ngày lập: <b style="color:#fff" id="printDate"></b></div>
       <div>Bản thiết kế 3D kỹ thuật</div>
     </div>
   </div>
 
-  <div style="text-align: center; margin-bottom: 16px;">
-    <img id="printImg" src="" alt="Mô phỏng 3D" style="width: 100%; max-height: 400px; object-fit: contain; border: 1px solid #d6dbe0; border-radius: 8px; background: #f0f7ff;" />
+  <div style="text-align: center; margin-bottom: 14px;">
+    <img id="printImg" src="" alt="Mô phỏng 3D" style="width: 100%; max-height: 380px; object-fit: contain; border: 1px solid #d6dbe0; border-radius: 8px; background: #f0f7ff;" />
+    <div style="font-size: 10.5px; color: #888; margin-top: 4px;">Phối cảnh mô phỏng 3D — giàn pin trên mái (ảnh có đóng dấu thông số)</div>
   </div>
 
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-    <div style="border: 1px solid #d6dbe0; border-radius: 8px; padding: 12px; background: #fafbfc;">
-      <h3 style="font-size: 14px; margin: 0 0 10px; color: #1473e6; border-bottom: 1px solid #e1e7ec; padding-bottom: 6px;">🏠 THÔNG SỐ CÔNG TRÌNH</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+    <div style="border: 1px solid #d6dbe0; border-top: 3px solid #1473e6; border-radius: 8px; padding: 12px; background: #fafbfc;">
+      <h3 style="font-size: 13.5px; margin: 0 0 10px; color: #0d47a1;">🏠 THÔNG SỐ CÔNG TRÌNH</h3>
       <table style="width: 100%; font-size: 12.5px; border-collapse: collapse;">
+        <tr id="pCustomerRow" style="display:none"><td style="color:#666; padding: 3px 0;">Khách hàng:</td><td style="font-weight:700; text-align:right" id="pCustomerNote">-</td></tr>
         <tr><td style="color:#666; padding: 3px 0;">Loại mái:</td><td style="font-weight:600; text-align:right" id="pRoofType">-</td></tr>
         <tr><td style="color:#666; padding: 3px 0;">Kích thước nhà:</td><td style="font-weight:600; text-align:right" id="pHouseDim">-</td></tr>
         <tr><td style="color:#666; padding: 3px 0;">Chiều cao tường:</td><td style="font-weight:600; text-align:right" id="pWallH">-</td></tr>
@@ -701,8 +704,8 @@
       </table>
     </div>
 
-    <div style="border: 1px solid #d6dbe0; border-radius: 8px; padding: 12px; background: #fafbfc;">
-      <h3 style="font-size: 14px; margin: 0 0 10px; color: #1473e6; border-bottom: 1px solid #e1e7ec; padding-bottom: 6px;">⚡ CẤU HÌNH HỆ THỐNG</h3>
+    <div style="border: 1px solid #d6dbe0; border-top: 3px solid #1473e6; border-radius: 8px; padding: 12px; background: #fafbfc;">
+      <h3 style="font-size: 13.5px; margin: 0 0 10px; color: #0d47a1;">⚡ CẤU HÌNH HỆ THỐNG</h3>
       <table style="width: 100%; font-size: 12.5px; border-collapse: collapse;">
         <tr><td style="color:#666; padding: 3px 0;">Model tấm pin:</td><td style="font-weight:600; text-align:right">LONGi Hi-MO 7 620M</td></tr>
         <tr><td style="color:#666; padding: 3px 0;">Tổng số tấm pin:</td><td style="font-weight:600; text-align:right; color:#0d47a1" id="pTotalPanels">-</td></tr>
@@ -747,7 +750,12 @@
     </table>
   </div>
 
-  <div style="display: flex; justify-content: space-between; margin-top: 30px; font-size: 13px;">
+  <div style="border-top: 1px dashed #cbd5e1; margin: 14px 0 0; padding-top: 8px; font-size: 10.5px; color: #64748b; display: flex; justify-content: space-between; gap: 12px;">
+    <span>Báo giá sơ bộ — số liệu ước tính từ mô hình 3D; khối lượng thực tế có thể điều chỉnh sau khảo sát hiện trạng.</span>
+    <span style="white-space:nowrap">Tạo bởi Solar 3D Simulator · ve3d.onrender.com</span>
+  </div>
+
+  <div style="display: flex; justify-content: space-between; margin-top: 26px; font-size: 13px;">
     <div style="text-align: center; width: 40%;">
       <div style="font-weight: 600; margin-bottom: 50px;">ĐẠI DIỆN KHÁCH HÀNG</div>
       <div style="color: #888;">(Ký & ghi rõ họ tên)</div>
@@ -759,6 +767,19 @@
   </div>
 </div>
 
+<!-- #10 Onboarding tour: spotlight 3 bước cho người mới lần đầu (localStorage solar3d.tour_done_v1) -->
+<div id="tourOverlay" style="display:none; position:fixed; inset:0; z-index:90;">
+  <div id="tourHighlight" style="position:absolute; border:2.5px solid #f59e0b; border-radius:10px; box-shadow:0 0 0 4000px rgba(8,15,25,.5); pointer-events:none; transition: all .25s var(--ease-out);"></div>
+  <div id="tourCard" style="position:absolute; max-width:290px; background:#fff; border-radius:12px; padding:14px 16px; box-shadow:0 10px 30px rgba(15,23,42,.35); transition: all .25s var(--ease-out);">
+    <div style="font-size:10.5px; font-weight:700; letter-spacing:.5px; color:#1473e6" id="tourStep">BƯỚC 1/3</div>
+    <div style="font-size:14px; font-weight:700; margin:4px 0 6px; color:#0f172a" id="tourTitle"></div>
+    <div style="font-size:12px; color:#475569; line-height:1.55" id="tourBody"></div>
+    <div style="display:flex; gap:8px; margin-top:12px; justify-content:space-between; align-items:center">
+      <button id="tourSkip" type="button" style="border:none; background:transparent; color:#64748b; font-size:12px; cursor:pointer; padding:6px 4px; font-weight:600">Bỏ qua hướng dẫn</button>
+      <button id="tourNext" type="button" class="save-btn" style="width:auto; margin:0; padding:9px 18px;">Tiếp ➜</button>
+    </div>
+  </div>
+</div>
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -1639,9 +1660,11 @@ function dimLine(p1, p2, tickDir, color, label, opt = {}) {
   }
   return grp;
 }
+let roofDimGroups = []; // P3-3: nét ghi TRÊN MÁI — tự ẩn khi camera gần ngang mặt mái (đọc như "khung lạ")
 function buildDimLines() {
   const W = state.houseW, L = state.houseL;
   const zf = L / 2 + 1.0, xr = W / 2 + 1.0;
+  roofDimGroups = [];
   houseGroup.add(dimLine(new THREE.Vector3(-W / 2, 0.05, zf), new THREE.Vector3(W / 2, 0.05, zf),
     new THREE.Vector3(0, 0, 1), 0x1473e6, `Rộng ${W} m`));
   houseGroup.add(dimLine(new THREE.Vector3(xr, 0.05, -L / 2), new THREE.Vector3(xr, 0.05, L / 2),
@@ -1651,14 +1674,18 @@ function buildDimLines() {
     const flat = s.n.y > 0.99; // mái bằng / dải bằng giữa
     // cạnh mái: lơi 0.25 ra ngoài mép mái
     const eOff = s.v.clone().multiplyScalar(-(s.vLen / 2 + 0.25));
-    houseGroup.add(dimLine(s.origin.clone().add(eOff).addScaledVector(s.u, -s.uLen / 2),
-      s.origin.clone().add(eOff).addScaledVector(s.u, s.uLen / 2), s.v, 0x2f9e44));
+    const gEdge = dimLine(s.origin.clone().add(eOff).addScaledVector(s.u, -s.uLen / 2),
+      s.origin.clone().add(eOff).addScaledVector(s.u, s.uLen / 2), s.v, 0x2f9e44);
+    houseGroup.add(gEdge);
+    roofDimGroups.push(gEdge);
     if (!flat) {
       // chiều dài dốc: 0.25 ngoài cạnh biên, uHalfAt giúp bám cạnh mái chéo (mái Nhật)
       const pAt = (vv) => s.origin.clone()
         .addScaledVector(s.u, s.uHalfAt(vv) + 0.25)
         .addScaledVector(s.v, vv);
-      houseGroup.add(dimLine(pAt(-s.vLen / 2), pAt(s.vLen / 2), s.u.clone().negate(), 0xe8590c));
+      const gDoc = dimLine(pAt(-s.vLen / 2), pAt(s.vLen / 2), s.u.clone().negate(), 0xe8590c);
+      houseGroup.add(gDoc);
+      roofDimGroups.push(gDoc);
     }
     // nhãn diện tích mái: ẩn với mái đã lắp pin — pin che nhãn, đọc không được
     if (!state.strings.some(st => st.slopeKey === s.key)) {
@@ -1666,6 +1693,7 @@ function buildDimLines() {
       sp.userData.isDimLine = true; // ẩn trong bản vẽ mặt bằng 2D
       sp.position.copy(s.origin).addScaledVector(s.n, 0.12);
       houseGroup.add(sp);
+      roofDimGroups.push(sp);
     }
   }
   // cao đỉnh: đường đứng ở góc trước nhà
@@ -3310,7 +3338,11 @@ function updateDirBtnActive() {
 }
 function syncTargetKwpFromCount() {
   const kwpInput = $("targetKwpInput");
-  if (kwpInput) kwpInput.value = (state.newCount * PANEL_WATT / 1000).toFixed(2);
+  const hasTarget = Number.isFinite(+state.targetKwp) && +state.targetKwp > 0;
+  if (kwpInput) kwpInput.value = hasTarget ? (+state.targetKwp).toFixed(2) : (state.newCount * PANEL_WATT / 1000).toFixed(2);
+  // P3-2 (đánh giá V4): khi có mục tiêu, ô phải HIỆN mục tiêu (không bị +/− số tấm ghi đè) + nhãn đổi tên
+  const lbl = document.getElementById("kwpInputLabel");
+  if (lbl) lbl.textContent = hasTarget ? "Mục tiêu (kWp):" : "Công suất (kWp):";
 }
 // đồng bộ toàn bộ control trong panel theo state (dùng sau khi khôi phục/undo)
 function syncUIFromState() {
@@ -3604,15 +3636,13 @@ $("rackHRange").addEventListener("input", () => {
   state.rackH = parseFloat($("rackHRange").value);
   const desc = state.rackH >= 1.2 ? " (Giàn cao sân thượng)" : " (Khung tiêu chuẩn)";
   $("rackHVal").textContent = state.rackH.toFixed(2) + " m" + desc;
-  rebuildStringGroups();
-  renderSummary();
+  scheduleBuildHouse(); // #6: coalesce — buildHouse bao gồm rebuildStringGroups
   scheduleHistory();
 });
 $("rackTiltRange").addEventListener("input", () => {
   state.rackTilt = parseInt($("rackTiltRange").value, 10);
   $("rackTiltVal").textContent = state.rackTilt + "°";
-  rebuildStringGroups();
-  renderSummary();
+  scheduleBuildHouse(); // #6: coalesce
   syncOptTiltBadge();
   scheduleHistory();
 });
@@ -3632,13 +3662,12 @@ $("rackSpacingRange").addEventListener("input", () => {
   state.rackSpacing = parseFloat($("rackSpacingRange").value);
   const desc = state.rackSpacing >= 1.0 ? " (Khoảng cách chống bóng che)" : " (Lối đi bảo trì chuẩn)";
   $("rackSpacingVal").textContent = state.rackSpacing.toFixed(2) + " m" + desc;
-  rebuildStringGroups();
-  renderSummary();
+  scheduleBuildHouse(); // #6: coalesce
   scheduleHistory();
 });
 $("tumThangCheck").addEventListener("change", (e) => {
   state.showTumThang = e.target.checked;
-  buildHouse();
+  buildHouse(); // change event bắn 1 lần — dựng ngay, không coalesce
   syncTumControls();
   refreshAll();
   scheduleHistory();
@@ -3646,31 +3675,31 @@ $("tumThangCheck").addEventListener("change", (e) => {
 $("tumWRange").addEventListener("input", () => {
   state.tumW = parseFloat($("tumWRange").value);
   $("tumWVal").textContent = state.tumW.toFixed(1) + " m";
-  buildHouse();
+  scheduleBuildHouse();
   syncTumControls();
   scheduleHistory();
 });
 $("tumLRange").addEventListener("input", () => {
   state.tumL = parseFloat($("tumLRange").value);
   $("tumLVal").textContent = state.tumL.toFixed(1) + " m";
-  buildHouse();
+  scheduleBuildHouse();
   syncTumControls();
   scheduleHistory();
 });
 $("tumHRange").addEventListener("input", () => {
   state.tumH = parseFloat($("tumHRange").value);
   $("tumHVal").textContent = state.tumH.toFixed(1) + " m";
-  buildHouse();
+  scheduleBuildHouse();
   scheduleHistory();
 });
 $("tumXRange").addEventListener("input", () => {
   state.tumX = parseFloat($("tumXRange").value);
-  buildHouse();
+  scheduleBuildHouse();
   scheduleHistory();
 });
 $("tumZRange").addEventListener("input", () => {
   state.tumZ = parseFloat($("tumZRange").value);
-  buildHouse();
+  scheduleBuildHouse();
   scheduleHistory();
 });
 document.querySelectorAll(".tum-pos-btn").forEach(btn => {
@@ -3730,14 +3759,14 @@ if ($("bonTypeDung")) {
 if ($("bonNuocXRange")) {
   $("bonNuocXRange").addEventListener("input", () => {
     state.bonNuocX = parseFloat($("bonNuocXRange").value);
-    buildHouse();
+    scheduleBuildHouse();
     scheduleHistory();
   });
 }
 if ($("bonNuocZRange")) {
   $("bonNuocZRange").addEventListener("input", () => {
     state.bonNuocZ = parseFloat($("bonNuocZRange").value);
-    buildHouse();
+    scheduleBuildHouse();
     scheduleHistory();
   });
 }
@@ -3808,31 +3837,39 @@ function setCameraView(view) {
 $("camTopBtn").onclick = () => setCameraView("top");
 $("camFrontBtn").onclick = () => setCameraView("front");
 $("camIsoBtn").onclick = () => setCameraView("iso");
+// #6: kéo slider hình học chỉ dựng lại tối đa 1 lần/frame (rAF coalesce) — tick liên tục không
+// còn buildHouse 60 lần/giây; nhãn giá trị vẫn cập nhật tức thì trong handler ở trên
+let _bhQueued = false;
+function scheduleBuildHouse() {
+  if (_bhQueued) return;
+  _bhQueued = true;
+  requestAnimationFrame(() => { _bhQueued = false; buildHouse(); refreshAll(); });
+}
 $("roofAngleRange").addEventListener("input", () => {
   state.roofAngle = parseInt($("roofAngleRange").value, 10);
   $("roofAngleVal").textContent = state.roofAngle + "°";
-  buildHouse(); refreshAll();
+  scheduleBuildHouse();
 });
 $("midFlatRange").addEventListener("input", () => {
   state.midFlatPct = parseInt($("midFlatRange").value, 10);
   $("midFlatVal").textContent = state.midFlatPct + "%";
-  buildHouse(); refreshAll();
+  scheduleBuildHouse();
 });
 $("ridgePctRange").addEventListener("input", () => {
   state.ridgePct = parseInt($("ridgePctRange").value, 10);
   $("ridgePctVal").textContent = state.ridgePct + " : " + (100 - state.ridgePct);
-  buildHouse(); refreshAll();
+  scheduleBuildHouse();
 });
 $("wallHRange").addEventListener("input", () => {
   state.wallH = parseFloat($("wallHRange").value);
   $("wallHVal").textContent = state.wallH.toFixed(1) + " m";
-  buildHouse(); refreshAll();
+  scheduleBuildHouse();
 });
 // khoảng cách chừa từ mép mái (thay hằng số 0.22 cũ) — đổi là sức chứa mái đổi theo
 $("edgeRange").addEventListener("input", () => {
   state.edgeMargin = parseFloat($("edgeRange").value);
   $("edgeVal").textContent = state.edgeMargin.toFixed(2) + " m";
-  buildHouse(); refreshAll();
+  scheduleBuildHouse();
 });
 // cách lắp
 document.querySelectorAll("#mountOptions .opt").forEach(o => {
@@ -3903,6 +3940,7 @@ if ($("targetKwpInput")) {
 // gỡ mục tiêu kWp (link "Bỏ mục tiêu" trong khối cảnh báo shortfall) — global để onclick inline gọi được
 window.clearTargetKwp = function () {
   state.targetKwp = null;
+  syncTargetKwpFromCount();
   renderSummary();
   scheduleHistory();
   scheduleAutoSave();
@@ -3916,6 +3954,66 @@ if ($("closeOnboardingBtn")) {
     if ($("onboardingGuide")) $("onboardingGuide").style.display = "none";
     try { localStorage.setItem(LS_ONBOARD, "1"); } catch (e) {}
   };
+}
+
+// #10 Onboarding tour: spotlight 3 bước lần đầu mở trang — nhấn target, chặn tương tác khác,
+// Bỏ qua/Hoàn tất ghi localStorage; mobile tự mở bottom-sheet trước khi chỉ tay vào panel
+const TOUR_KEY = "solar3d.tour_done_v1";
+const TOUR_STEPS = [
+  { sel: "#roofOptions", title: "① Chọn loại mái nhà bạn", body: "Tôn, Ngói, Mái Nhật, Mái bằng, 2 dốc + bằng — mô hình dựng theo đúng loại mái, góc nghiêng và kích thước bạn nhập." },
+  { sel: "#autoBtn", title: "② Bấm ⚡ Xếp tự động", body: "Hệ thống tính sức chứa từng mái và lấp đầy pin ngay — tự né tum thang, bồn nước, giữ hành lang mép mái an toàn." },
+  { sel: "#saveBtn", title: "③ Xuất & chốt với khách", body: "Lưu ảnh 3D đóng dấu thông số, tải bản vẽ mặt bằng, xuất PDF báo giá sơ bộ hoặc chuyển thẳng sang Báo Giá VCC." },
+];
+let tourIdx = 0;
+function tourTargetRect(sel) {
+  const el = document.querySelector(sel);
+  if (!el) return null;
+  return { el, rect: el.getBoundingClientRect() };
+}
+function tourPlace(idx) {
+  const step = TOUR_STEPS[idx];
+  const tgt = tourTargetRect(step.sel);
+  if (!tgt) { tourFinish(); return; }
+  tgt.el.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+  setTimeout(() => {
+    const r = tgt.el.getBoundingClientRect();
+    const hl = $("tourHighlight"), card = $("tourCard");
+    if (!hl || !card) return;
+    hl.style.left = (r.left - 6) + "px";
+    hl.style.top = (r.top - 6) + "px";
+    hl.style.width = (r.width + 12) + "px";
+    hl.style.height = (r.height + 12) + "px";
+    // card đặt dưới target nếu còn chỗ, ngược lại đặt trên
+    const below = r.bottom + 14 + 170 < window.innerHeight;
+    const left = Math.min(Math.max(10, r.left), window.innerWidth - 300);
+    card.style.left = left + "px";
+    card.style.top = below ? (r.bottom + 14) + "px" : Math.max(10, r.top - 14 - card.offsetHeight) + "px";
+    $("tourStep").textContent = `BƯỚC ${idx + 1}/${TOUR_STEPS.length}`;
+    $("tourTitle").textContent = step.title;
+    $("tourBody").textContent = step.body;
+    $("tourNext").textContent = idx === TOUR_STEPS.length - 1 ? "Hoàn tất ✓" : "Tiếp ➜";
+  }, prefersReducedMotion() ? 60 : 340); // đợi scrollIntoView + panel sheet (mobile .28s)
+}
+function tourStart() {
+  tourIdx = 0;
+  $("tourOverlay").style.display = "block";
+  if (window.innerWidth <= 760) $("app").classList.add("panel-open"); // mobile: mở sheet trước
+  tourPlace(0);
+}
+function tourFinish() {
+  $("tourOverlay").style.display = "none";
+  try { localStorage.setItem(TOUR_KEY, "1"); } catch (e) {}
+}
+if ($("tourOverlay")) {
+  $("tourNext").onclick = () => { tourIdx++; tourIdx < TOUR_STEPS.length ? tourPlace(tourIdx) : tourFinish(); };
+  $("tourSkip").onclick = tourFinish;
+  // chỉ chạy lần đầu; không chạy trong iframe nhúng Studio của VCC; chạy sau khi veil + entrance tàn
+  const inIframe = window.parent && window.parent !== window;
+  if (!inIframe) {
+    let done = false;
+    try { done = localStorage.getItem(TOUR_KEY) === "1"; } catch (e) {}
+    if (!done) setTimeout(tourStart, 900);
+  }
 }
 $("addBtn").onclick = addString;
 // xếp tự động: lấp phần mái CÒN TRỐNG (không đè chuỗi đã có, không vượt sức chứa mái)
@@ -4816,6 +4914,13 @@ function exportPDF() {
   const shadePct = calcShadingLossPct();
   if ($("pShadingRow")) $("pShadingRow").style.display = shadePct > 0 ? "" : "none";
   if ($("pShadingNote")) $("pShadingNote").textContent = `~${shadePct}%`;
+  // thông tin khách hàng nhận từ URL Báo giá VCC (?c_name=&c_addr=) — có thì in vào báo cáo
+  if ($("pCustomerRow")) {
+    const ci = state.customerInfo;
+    const has = ci && (ci.name || ci.address);
+    $("pCustomerRow").style.display = has ? "" : "none";
+    if ($("pCustomerNote")) $("pCustomerNote").textContent = has ? [ci.name, ci.address].filter(Boolean).join(" — ") : "—";
+  }
   $("pTotalStrings").textContent = `${state.strings.length} chuỗi`;
 
   const tbody = $("pStringTableBody");
@@ -5108,6 +5213,7 @@ function hideLoadingVeil() {
   const veil = document.getElementById("loadingVeil");
   if (veil) { veil.classList.add("done"); setTimeout(() => veil.remove(), 600); }
 }
+let dimShown = true; // P3-3: trạng thái hiện/ẩn nét ghi trên mái (hysteresis chống nhấp nháy)
 renderer.setAnimationLoop(() => {
   if (camTween) {
     const k = Math.min(1, (performance.now() - camTween.start) / camTween.dur);
@@ -5117,6 +5223,17 @@ renderer.setAnimationLoop(() => {
     if (k >= 1) camTween = null;
   }
   controls.update();
+  // P3-3: nét ghi trên mái tự ẩn khi camera gần ngang mặt mái (dưới 14° ẩn, trên 18° hiện)
+  if (roofDimGroups.length) {
+    const dy = camera.position.y - controls.target.y;
+    const dh = Math.hypot(camera.position.x - controls.target.x, camera.position.z - controls.target.z);
+    const elev = Math.atan2(dy, dh);
+    const want = dimShown ? elev > 0.244 : elev > 0.314;
+    if (want !== dimShown) {
+      dimShown = want;
+      for (const g of roofDimGroups) g.visible = want;
+    }
+  }
   renderer.render(scene, camera);
   // frame đầu tiên render xong → gỡ màn che "Đang dựng mô hình 3D"
   if (!veilHidden) hideLoadingVeil();
@@ -5131,6 +5248,7 @@ window.__solar = {
   refreshAll, buildHouse, calcSolarFactor, calcBifacialGainPct, checkSetbackViolations, stringElectricalCheck, calcShadingLossPct, sunDirAt, getBonNuocPos, getTumPos, flatRoofY, renderPlanCanvas, captureStandardSnapshots,
   polyAreaM2, pointInPoly, polySlotOK, applyRoofPoly, rebuildPolyOutline, roofPlanAreaM2, getHoverStringId: () => hoverStringId, hoverBoxVisible: () => hoverBox.visible, sunPathGroup: () => sunPathGroup,
   getHistory: () => ({ hist, histIdx }),
+  prepareBaoGiaPayload, captureSnapshotForView,
   textures: () => renderer.info.memory,
 };
 </script>
