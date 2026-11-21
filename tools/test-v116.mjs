@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import { makeStaticHandler } from './serve-static.mjs';
 
 function findChrome() {
   const cands = [
@@ -11,17 +12,8 @@ function findChrome() {
   return cands.find(p => fs.existsSync(p));
 }
 
-// Start temporary local HTTP server for index.html
-const server = http.createServer((req, res) => {
-  const filePath = 'C:\\Users\\Hoanpn\\My Drive\\3D Thiết kế\\solar-3d-simulator\\index.html';
-  if (fs.existsSync(filePath)) {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(fs.readFileSync(filePath));
-  } else {
-    res.writeHead(404);
-    res.end('Not found');
-  }
-});
+// Start temporary local HTTP server (file tĩnh: index.html + vendor/ three.js)
+const server = http.createServer(makeStaticHandler(ROOT));
 
 server.listen(8125, '127.0.0.1', async () => {
   try {

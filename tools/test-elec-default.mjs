@@ -7,6 +7,7 @@
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import { makeStaticHandler } from './serve-static.mjs';
 
 const ROOT = decodeURIComponent(new URL('..', import.meta.url).pathname).replace(/^\/([A-Za-z]:)/, '$1');
 
@@ -20,10 +21,7 @@ function findChrome() {
 }
 
 const PORT = 8131, CDP = 9461;
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-  res.end(fs.readFileSync(ROOT + 'index.html'));
-});
+const server = http.createServer(makeStaticHandler(ROOT));
 
 const results = {};
 let chromeProc = null;
